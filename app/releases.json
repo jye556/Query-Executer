@@ -1,0 +1,23 @@
+{
+  "version": "1.0.1",
+  "releases": [
+    {
+      "version": "1.0.0",
+      "date": "2026-09-24",
+      "notes": [
+        "Initial versioned release"
+      ]
+    },
+    {
+      "version": "1.0.1",
+      "date": "2026-09-24",
+      "notes": [
+        "Move two-factor authentication into Settings and provide a local setup QR code.",
+        "Group saved connections by their assigned group and filter by database name.",
+        "Add version display, update checking, and release notes.",
+        "Improve buttons and center the login form.",
+        "Add Linux and Windows setup scripts and GitHub publishing documentation."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in · Query Execute</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v=v1.0.1">
+</head>
+<body class="dark-theme auth-page">
+    <main class="auth-shell">
+        <section class="auth-card" aria-labelledby="login-title">
+            <div class="auth-brand">
+                <div class="logo-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="auth-eyebrow">Query Execute</p>
+                    <h1 id="login-title">Welcome back</h1>
+                </div>
+            </div>
+            <p class="auth-subtitle">Sign in to access your authorized database connections.</p>
+            <form id="login-form" class="auth-form">
+                <div class="form-group">
+                    <label for="login-username">Username</label>
+                    <input id="login-username" name="username" autocomplete="username" required maxlength="150" autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="1024">
+                </div>
+                <div class="form-group" id="login-totp-group" hidden>
+                    <label for="login-totp">Authenticator code</label>
+                    <input id="login-totp" name="totp_code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6">
+                </div>
+                <p id="login-error" class="auth-error hidden" role="alert"></p>
+                <button type="submit" id="login-submit" class="btn btn-accent btn-large">Sign in</button>
+            </form>
+            <p class="auth-help">2FA can be enabled per account from the application after sign-in.</p>
+        </section>
+    </main>
+    <script>
+        const form = document.getElementById('login-form');
+        const submit = document.getElementById('login-submit');
+        const error = document.getElementById('login-error');
+        const totpGroup = document.getElementById('login-totp-group');
+        const totpInput = document.getElementById('login-totp');
+        let needsTotp = false;
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            error.classList.add('hidden');
+            submit.disabled = true;
+            submit.textContent = 'Signing in…';
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        username: document.getElementById('login-username').value,
+                        password: document.getElementById('login-password').value,
+                        totp_code: totpInput.value || null
+                    })
+                });
+                const body = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    if (response.status === 401 && body.detail === 'Invalid authenticator code') {
+                        needsTotp = true;
+                        totpGroup.hidden = false;
+                        totpInput.required = true;
+                        totpInput.focus();
+                    }
+                    throw new Error(body.detail || 'Unable to sign in');
+                }
+                const next = new URLSearchParams(window.location.search).get('next');
+                // Only honor a local path supplied by our own redirect.  Never
+                // turn the login form into an open redirector.
+                const destination = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+                window.location.assign(destination);
+            } catch (err) {
+                error.textContent = err.message;
+                error.classList.remove('hidden');
+                submit.disabled = false;
+                submit.textContent = needsTotp ? 'Verify and sign in' : 'Sign in';
+            }
+        });
+    </script>
+</body>
+</html>

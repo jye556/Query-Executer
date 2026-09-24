@@ -1,0 +1,43 @@
+services:
+  web:
+    build: .
+    container_name: query-execute-app
+    ports:
+      - "8282:8282"
+    environment:
+      - PORT=8282
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/query_execute
+      # Set these in a .env file or deployment secret store before first start.
+      - BOOTSTRAP_ADMIN_USERNAME=${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      - BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD:?Set BOOTSTRAP_ADMIN_PASSWORD}
+      - APP_ENCRYPTION_KEY=${APP_ENCRYPTION_KEY:?Set APP_ENCRYPTION_KEY}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      - COOKIE_SECURE=${COOKIE_SECURE:-0}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:-your-github-username/query-execute}
+      - UPDATE_CHECK_URL=${UPDATE_CHECK_URL:-https://api.github.com/repos/${GITHUB_REPOSITORY:-your-github-username/query-execute}/releases/latest}
+      - UPDATE_RELEASES_URL=${UPDATE_RELEASES_URL:-https://github.com/${GITHUB_REPOSITORY:-your-github-username/query-execute}/releases/latest}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  db:
+    image: postgres:15-alpine
+    container_name: query-execute-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      - POSTGRES_DB=query_execute
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d query_execute"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: always
+
+volumes:
+  pgdata:

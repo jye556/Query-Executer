@@ -1,0 +1,19 @@
+# Environment files may contain credentials; never commit them.
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+query_execute.db
+query_execute.db-*
+*.dump
+*.sql.gz
+*.tar.gz

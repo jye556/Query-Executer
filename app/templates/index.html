@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Query Execute</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v=v1.0.1">
+    <script defer src="/static/js/app.js?v=v1.0.1"></script>
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- HEADER -->
+        <header class="app-header">
+            <p id="version-update-banner" class="version-update-banner hidden" role="status"></p>
+            <div class="logo-area">
+                <button class="sidebar-toggle-btn" id="sidebar-toggle" aria-label="Toggle navigation">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <line x1="3" y1="12" x2="21" y2="12"/>
+                        <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+                <div class="logo-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                        <polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                </div>
+                <div class="logo-text">
+                    <h1>Query Execute <span class="app-version-pill" id="app-version-pill">v1.0.1</span></h1>
+                </div>
+            </div>
+            <div class="header-controls">
+                <div class="status-indicator online">
+                    <span class="pulse-dot"></span>
+                    <span id="connection-status-text">Server Active</span>
+                </div>
+                <div class="user-menu">
+                    <span id="current-user-label" class="current-user-label">Signed in</span>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-theme-toggle" aria-label="Switch theme">Light mode</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-logout">Log out</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="page-body">
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-logo">
+                    <span class="sidebar-app-name">Navigation</span>
+                    <button class="sidebar-close-btn" id="sidebar-close" aria-label="Close navigation">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+                <nav>
+                    <ul>
+                        <li>
+                            <a href="#" class="sidebar-link active" data-view="query-section">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
+                                Query Editor
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="sidebar-link" data-view="connections-section">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                                Connections
+                            </a>
+                        </li>
+                        <li class="admin-only">
+                            <a href="#" class="sidebar-link" data-view="users-section">Users</a>
+                        </li>
+                        <li class="admin-only">
+                            <a href="#" class="sidebar-link" data-view="groups-section">Groups</a>
+                        </li>
+                        <li>
+                            <a href="#" class="sidebar-link" data-view="settings-section" aria-label="Open application settings">Settings</a>
+                        </li>
+                        <li>
+                            <a href="#" class="sidebar-link" data-view="history-section">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                History
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <div class="content-wrapper">
+                <!-- VIEW: QUERY EDITOR -->
+                <main class="app-view" id="query-section">
+                    <div class="query-editor-split">
+                        <!-- LEFT PANEL: Connections & Settings -->
+                        <aside class="query-left-panel" id="query-left-panel">
+                            <div class="panel-section">
+                                <div class="panel-header">
+                                    <h3>Connections</h3>
+                                    <div class="connection-filter-row">
+                                        <input type="search" id="query-db-search" class="connection-search-input" placeholder="Search database name" aria-label="Search connections by database name" autocomplete="off">
+                                        <select id="query-group-filter" class="connection-group-filter" aria-label="Filter connections by group">
+                                            <option value="all">All Groups</option>
+                                        </select>
+                                        <select id="query-db-type-filter" class="connection-group-filter" aria-label="Filter connections by database type">
+                                            <option value="all">All Types</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="connections-panel-list" id="connections-panel-list">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                            <div class="panel-section">
+                                <div class="panel-header">
+                                    <h3>Settings</h3>
+                                </div>
+                                <div class="settings-panel">
+                                    <div class="toolbar-group">
+                                        <label for="query-limit" class="toolbar-label">Limit</label>
+                                        <input type="number" id="query-limit" class="toolbar-input" value="1000" min="1" max="10000">
+                                    </div>
+                                </div>
+                            </div>
+                        </aside>
+
+                        <!-- RIGHT PANEL: SQL Editor & Results -->
+                        <div class="query-right-panel" id="query-right-panel">
+                            <section class="grid-card editor-card">
+                                <div class="card-header">
+                                    <div class="header-title">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                        <h2>SQL Query Editor</h2>
+                                    </div>
+                                    <button type="button" class="btn btn-accent btn-large" id="btn-execute-query">
+                                        <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                        <span id="btn-execute-text">Execute</span>
+                                        <div class="btn-spinner hidden" id="execute-spinner"></div>
+                                    </button>
+                                </div>
+
+                                <div class="editor-pane">
+                                    <div class="editor-container">
+                                        <div class="editor-header">
+                                            <span class="editor-lang">SQL</span>
+                                            <div class="editor-actions">
+                                                <span id="query-check-status" class="query-check-status" role="status" aria-live="polite">Ready</span>
+                                                <button type="button" class="btn btn-ghost btn-sm" id="btn-format-sql" title="Format SQL">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                                                </button>
+                                                <button type="button" class="btn btn-ghost btn-sm" id="btn-clear-editor" title="Clear Editor">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <textarea id="query-editor" class="code-editor" spellcheck="false" placeholder="Enter any SQL statement here...&#10;&#10;SELECT * FROM users;&#10;CREATE TABLE example (id INTEGER);"></textarea>
+                                        <div id="query-suggestions" class="query-suggestions hidden" role="listbox" aria-label="Table and field suggestions"></div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <!-- MULTI-DATABASE RESULTS SECTION -->
+                            <section class="grid-card results-card">
+                                <div class="card-header">
+                                    <div class="header-title">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                                        <h2>Query Results</h2>
+                                    </div>
+                                    <div class="results-meta">
+                                        <span class="result-count" id="result-count">0 rows</span>
+                                        <span class="execution-time" id="execution-time">0 ms</span>
+                                        <div id="result-edit-actions" class="result-edit-actions hidden">
+                                            <button type="button" class="btn btn-primary btn-sm" id="btn-apply-result-edits">Apply</button>
+                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-revert-result-edits">Revert</button>
+                                        </div>
+                                        <button class="btn btn-secondary btn-sm" id="btn-export-csv" disabled>
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                            Export CSV
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="results-container" id="results-container" data-edit-context="">
+                                    <div id="results-placeholder" class="table-placeholder">
+                                        <div class="placeholder-icon">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
+                                        </div>
+                                        <h4>No Query Executed Yet</h4>
+                                        <p>Select a connection, enter a SQL query, and click Execute to see results.</p>
+                                    </div>
+
+                                    <!-- Multi-database results will be rendered here -->
+                                    <div id="multi-results-container" class="hidden">
+                                        <!-- Each selected connection gets its own result section -->
+                                    </div>
+
+                                    <div class="error-container hidden" id="error-container">
+                                        <div class="error-icon">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                        </div>
+                                        <h4>Query Error</h4>
+                                        <pre id="error-message"></pre>
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                </main>
+
+                <main class="app-view hidden" id="settings-section">
+                    <section class="grid-card settings-card">
+                        <div class="card-header"><h2>Settings</h2></div>
+                        <nav aria-label="Settings sections" class="settings-tabs">
+                            <button type="button" class="settings-tab active" data-settings-tab="account-settings">Account</button>
+                            <button type="button" class="settings-tab" data-settings-tab="updates-settings">Updates</button>
+                        </nav>
+                        <section class="settings-tab-panel" id="account-settings">
+                            <h3>Account security</h3>
+                            <p>Authenticator-app two-factor authentication protects your sign-in.</p>
+                            <button type="button" class="btn btn-accent" id="btn-account-security">Enable authenticator 2FA</button>
+                        </section>
+                        <section class="settings-tab-panel hidden" id="updates-settings">
+                            <h3>Application updates</h3>
+                            <p>Installed version: <strong id="current-app-version">v1.0.1</strong></p>
+                            <p id="update-status" role="status">Checking for updates…</p>
+                            <a id="btn-apply-update" class="btn btn-accent hidden" href="#" target="_blank" rel="noopener noreferrer">Open release page</a>
+                            <ol id="release-log" class="release-log"></ol>
+                        </section>
+                    </section>
+                </main>
+
+                <!-- VIEW: CONNECTIONS -->
+                <main class="app-view hidden" id="connections-section">
+                    <section class="grid-card connections-card">
+                        <div class="card-header">
+                            <div class="header-title">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                                <h2>Database Connections</h2>
+                            </div>
+                            <div class="header-actions">
+                                <select id="connections-group-filter" class="connection-list-filter" aria-label="Filter saved connections by group">
+                                    <option value="all">All Groups</option>
+                                </select>
+                                <select id="connections-db-type-filter" class="connection-list-filter" aria-label="Filter saved connections by database type">
+                                    <option value="all">All Types</option>
+                                </select>
+                                <button class="btn btn-secondary btn-sm admin-only" id="btn-show-users">Users</button>
+                                <button class="btn btn-secondary btn-sm admin-only" id="btn-show-groups">Groups</button>
+                                <button class="btn btn-primary btn-sm admin-only" id="btn-show-add-connection">Add Connection</button>
+                            </div>
+                        </div>
+                        <div class="form-slideout hidden" id="add-connection-form-container">
+                            <form id="add-connection-form" class="glass-form">
+                                <h3 class="form-title" id="form-title">Add Database Connection</h3>
+                                <input type="hidden" id="editing-connection-id">
+                                <div class="form-grid">
+                                    <div class="form-group full-width">
+                                        <label for="conn-name">Connection Name</label>
+                                        <input type="text" id="conn-name" required placeholder="e.g. Production PostgreSQL">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="conn-group">Groups</label>
+                                        <select id="conn-group" class="form-select" multiple size="4" aria-label="Assign connection to groups"></select>
+                                        <small class="form-hint">Ctrl/Cmd-click to assign multiple groups.</small>
+                                        <input type="text" id="conn-new-group" class="form-input hidden" maxlength="150" placeholder="New group name">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="conn-db-type">Database Type</label>
+                                        <select id="conn-db-type" required>
+                                            <!-- Populated dynamically -->
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="conn-host">Host</label>
+                                        <input type="text" id="conn-host" placeholder="localhost">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="conn-port">Port</label>
+                                        <input type="number" id="conn-port" placeholder="Default port">
+                                    </div>
+                                    <div class="form-group full-width" id="conn-database-group">
+                                        <label for="conn-database">Database</label>
+                                        <input type="text" id="conn-database" placeholder="/db/mydb.fdb">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="conn-username">Username</label>
+                                        <input type="text" id="conn-username" value="SYSDBA" placeholder="SYSDBA">
+                                    </div>
+                                    <div class="form-group relative-group">
+                                        <label for="conn-password">Password</label>
+                                        <div class="password-wrapper">
+                                            <input type="password" id="conn-password" value="" placeholder="Leave blank to keep the saved password">
+                                            <button type="button" class="btn-toggle-password" id="conn-toggle-pwd-btn">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="eye-open"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="form-group full-width">
+                                        <label for="conn-extra-params">Extra Parameters (JSON)</label>
+                                        <textarea id="conn-extra-params" class="code-editor-small" placeholder='{"sslmode": "require", "charset": "utf8mb4"}'></textarea>
+                                    </div>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-secondary" id="btn-cancel-connection">Cancel</button>
+                                    <button type="button" class="btn btn-secondary" id="btn-form-test-conn" style="border-color: var(--success); color: var(--success);">
+                                        <span id="btn-form-test-text">Test Connection</span>
+                                        <div class="btn-spinner hidden" id="form-test-spinner" style="border-top-color: var(--success); width: 14px; height: 14px; border-width: 2px;"></div>
+                                    </button>
+                                    <button type="submit" class="btn btn-accent" id="btn-submit-connection">Save Connection</button>
+                                </div>
+                                <p class="form-hint">Passwords are write-only. Leave the password blank while editing to keep the saved secret.</p>
+                            </form>
+                        </div>
+
+                        <!-- CONNECTIONS LIST -->
+                        <div class="connections-list" id="connections-list-container">
+                            <div class="loading-spinner-container">
+                                <div class="spinner"></div>
+                                <p>Loading connections...</p>
+                            </div>
+                        </div>
+                    </section>
+                </main>
+
+                <!-- VIEW: HISTORY -->
+                <main class="app-view hidden" id="history-section">
+                    <section class="grid-card history-card">
+                        <div class="card-header">
+                            <div class="header-title">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                <h2>Query History</h2>
+                            </div>
+                            <button class="btn btn-danger btn-sm" id="btn-clear-history">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                Clear My History
+                            </button>
+                        </div>
+
+                        <div class="history-list history-list-compact" id="history-list-container">
+                            <div class="loading-spinner-container">
+                                <div class="spinner"></div>
+                                <p>Loading history...</p>
+                            </div>
+                        </div>
+                    </section>
+                </main>
+
+                <!-- VIEW: ADMIN USER MANAGEMENT -->
+                <main class="app-view hidden admin-only" id="users-section">
+                    <section class="grid-card admin-card">
+                        <div class="card-header">
+                            <div class="header-title"><h2>User Management</h2></div>
+                            <button class="btn btn-primary btn-sm" id="btn-add-user">Add User</button>
+                        </div>
+                        <form id="admin-user-form" class="admin-form hidden">
+                            <input type="hidden" id="admin-user-id">
+                            <div class="form-group"><label for="admin-user-username">Username</label><input id="admin-user-username" maxlength="150" required></div>
+                            <div class="form-group"><label for="admin-user-password">Password</label><input id="admin-user-password" type="password" minlength="8" maxlength="1024" placeholder="Required for a new user; blank keeps the existing password"></div>
+                            <div class="form-group"><label for="admin-user-role">Role</label><select id="admin-user-role"><option value="viewer">Viewer</option><option value="writer">Writer</option><option value="admin">Admin</option></select></div>
+                            <div class="form-group"><label for="admin-user-groups">Group memberships</label><select id="admin-user-groups" class="form-select" multiple size="4"></select></div>
+                            <div class="form-actions"><button type="button" class="btn btn-secondary" id="btn-cancel-user">Cancel</button><button type="submit" class="btn btn-accent">Save User</button></div>
+                        </form>
+                        <div id="users-list-container" class="admin-list"></div>
+                    </section>
+                </main>
+
+                <!-- VIEW: ADMIN GROUP MANAGEMENT -->
+                <main class="app-view hidden admin-only" id="groups-section">
+                    <section class="grid-card admin-card">
+                        <div class="card-header">
+                            <div class="header-title"><h2>Group Management</h2></div>
+                            <button class="btn btn-primary btn-sm" id="btn-add-group">Add Group</button>
+                        </div>
+                        <form id="admin-group-form" class="admin-form hidden">
+                            <input type="hidden" id="admin-group-id">
+                            <div class="form-group"><label for="admin-group-name">Group name</label><input id="admin-group-name" maxlength="150" required></div>
+                            <div class="form-actions"><button type="button" class="btn btn-secondary" id="btn-cancel-group">Cancel</button><button type="submit" class="btn btn-accent">Save Group</button></div>
+                        </form>
+                        <div id="groups-list-container" class="admin-list"></div>
+                    </section>
+                </main>
+
+            </div>
+        </div>
+
+    <dialog id="totp-setup-dialog" class="totp-setup-dialog" aria-labelledby="totp-setup-title">
+        <form id="totp-setup-form">
+            <h2 id="totp-setup-title">Set up authenticator app</h2>
+            <p>Add this key in your authenticator app, or scan the QR code. Then enter its current six-digit code.</p>
+            <img id="totp-setup-qr" class="totp-setup-qr" alt="Authenticator app setup QR code">
+            <label for="totp-setup-secret">Setup key</label>
+            <div class="totp-secret-row">
+                <code id="totp-setup-secret"></code>
+                <button type="button" class="btn btn-secondary" id="btn-copy-totp-secret">Copy key</button>
+            </div>
+            <label for="totp-setup-code">Authenticator code</label>
+            <input id="totp-setup-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" id="btn-cancel-totp-setup">Cancel</button>
+                <button type="submit" class="btn btn-accent" id="btn-confirm-totp-setup">Enable 2FA</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toast-container" class="toast-container"></div>
+
+    
+</body>
+</html>
