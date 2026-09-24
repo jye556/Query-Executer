@@ -52,26 +52,23 @@ For each future enhancement/release, update the app version, `app/releases.json`
 
 ## Publish to GitHub step by step
 
-1. Create a new empty GitHub repository; do not initialize it with another README or license.
-2. Review `.gitignore`. Confirm `.env`, `.venv`, local databases, backups, and dumps will not be staged. Set the real `GITHUB_REPOSITORY` in your private `.env`.
-3. From the project directory, initialize and stage only intended source/docs:
+The repository is `https://github.com/jye556/Query-Executer`. The helper script runs tests, checks that local config/database/backup files are not tracked, pushes the committed branch to `main`, and verifies the remote commit. Run it from the checkout:
 
-   ```bash
-   git init -b main
-   git add .github app scripts tests Dockerfile docker-compose.yml README.md requirements.txt install_linux.sh install_windows.ps1 install_windows.bat start_windows.bat start_windows.ps1 .gitignore .env.example
-   git status --short
-   git diff --cached
-   ```
+```bash
+bash scripts/publish_github.sh --check   # validate without publishing
+bash scripts/publish_github.sh           # push commits to main
+bash scripts/publish_github.sh --release # push and create the matching GitHub release
+```
 
-   Ensure no secret, `.env`, local DB, or backup is staged. Choose a license if you intend to grant reuse rights; none is assumed.
-4. Commit and push using the actual URL shown by GitHub:
+Authenticate first with `gh auth login` (or `gh auth refresh -h github.com -s repo,workflow`), using an account that has repository write access. Never paste tokens into chat or put them in a remote URL. The script expects a clean working tree and the configured `origin`; it does not commit files for you.
 
-   ```bash
-   git commit -m "Release Query Execute v1.0.1"
-   git remote add origin https://github.com/jye556/Query-Executer.git
-   git push -u origin main
-   ```
-5. Verify files and the Actions tab on GitHub. Create release tag `v1.0.1` with matching notes. Set `GITHUB_REPOSITORY=jye556/Query-Executer` in deployments to enable accurate update checks.
+Manual equivalent, if you prefer to inspect each step:
+
+1. Run tests and inspect `git status` / `git diff`.
+2. Stage and commit only intended application files. Do not add `.env`, local databases, backups, or dumps.
+3. Push the reviewed commit: `git push origin HEAD:main`.
+4. Verify `git ls-remote origin refs/heads/main` matches `git rev-parse HEAD`.
+5. Create release `v1.0.1` in GitHub after confirming that release has not already been made; the app version and `app/releases.json` are the source of the tag/version.
 
 ## Development checks
 
