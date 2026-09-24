@@ -30,7 +30,7 @@
                 </button>
             </div>
             <p class="auth-subtitle">Sign in to access your authorized database connections.</p>
-            <form id="login-form" class="auth-form">
+            <form id="login-form" class="auth-form" method="post" action="/api/auth/login">
                 <div class="form-group">
                     <label for="login-username">Username</label>
                     <input id="login-username" name="username" autocomplete="username" required maxlength="150" autofocus>

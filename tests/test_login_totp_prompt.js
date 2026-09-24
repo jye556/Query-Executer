@@ -6,6 +6,7 @@ const vm = require("node:vm");
 const template = fs.readFileSync(path.join(__dirname, "../app/templates/login.html"), "utf8");
 const inlineScript = template.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 assert.ok(inlineScript, "login template must contain the login controller");
+assert.match(template, /<form id="login-form"[^>]*method="post"/i, "login form must never put credentials in a GET query string");
 
 function makeLogin(fetchImpl) {
     const handlers = {};
