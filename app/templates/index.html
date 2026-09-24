@@ -15,7 +15,10 @@
         <header class="app-header">
             <div class="version-update-banner hidden" id="version-update-banner" role="status">
                 <span id="version-update-message"></span>
-                <a id="version-update-link" href="#" target="_blank" rel="noopener noreferrer">View update</a>
+                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <a id="version-update-link" href="#" target="_blank" rel="noopener noreferrer">View update</a>
+                    <button type="button" class="btn btn-primary btn-sm" id="btn-auto-update-banner" style="display: none;">Update now</button>
+                </div>
             </div>
             <div class="logo-area">
                 <button class="sidebar-toggle-btn" id="sidebar-toggle" aria-label="Toggle navigation">

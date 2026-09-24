@@ -325,6 +325,7 @@ function setupEventListeners() {
         event.currentTarget.href = event.currentTarget.dataset.releaseUrl || "#";
     });
     document.getElementById("btn-auto-update")?.addEventListener("click", autoUpdate);
+    document.getElementById("btn-auto-update-banner")?.addEventListener("click", autoUpdate);
     sidebarToggle?.addEventListener("click", () => sidebar.classList.toggle("hidden"));
     sidebarClose?.addEventListener("click", () => sidebar.classList.add("hidden"));
     sidebarLinks.forEach(link => link.addEventListener("click", event => {
@@ -397,6 +398,7 @@ async function checkForUpdates() {
     const pageMessage = document.getElementById("version-update-message");
     const pageLink = document.getElementById("version-update-link");
     const autoUpdateBtn = document.getElementById("btn-auto-update");
+    const autoUpdateBannerBtn = document.getElementById("btn-auto-update-banner");
     const updateProgress = document.getElementById("update-progress");
     if (!status && !pageUpdate) return;
     const update = await fetchVersionData();
@@ -404,6 +406,7 @@ async function checkForUpdates() {
         if (status) status.textContent = "Unable to check for updates right now.";
         if (pageUpdate) pageUpdate.classList.add("hidden");
         if (autoUpdateBtn) autoUpdateBtn.style.display = "none";
+        if (autoUpdateBannerBtn) autoUpdateBannerBtn.style.display = "none";
         return;
     }
     const current = update.version.startsWith("v") ? update.version : `v${update.version}`;
@@ -423,6 +426,9 @@ async function checkForUpdates() {
     if (autoUpdateBtn) {
         autoUpdateBtn.style.display = update.update_available ? "inline-flex" : "none";
     }
+    if (autoUpdateBannerBtn) {
+        autoUpdateBannerBtn.style.display = update.update_available ? "inline-flex" : "none";
+    }
     if (pageUpdate && pageMessage && pageLink) {
         pageMessage.textContent = message;
         pageLink.href = update.release_url;
@@ -434,13 +440,17 @@ async function checkForUpdates() {
 
 async function autoUpdate() {
     const autoUpdateBtn = document.getElementById("btn-auto-update");
+    const autoUpdateBannerBtn = document.getElementById("btn-auto-update-banner");
     const updateProgress = document.getElementById("update-progress");
     const status = document.getElementById("update-status");
 
-    if (!autoUpdateBtn) return;
+    const buttons = [autoUpdateBtn, autoUpdateBannerBtn].filter(Boolean);
+    if (!buttons.length) return;
 
-    autoUpdateBtn.disabled = true;
-    autoUpdateBtn.textContent = "Updating...";
+    buttons.forEach(btn => {
+        btn.disabled = true;
+        btn.textContent = "Updating...";
+    });
     if (updateProgress) {
         updateProgress.style.display = "block";
         updateProgress.textContent = "Fetching updates...";
@@ -460,7 +470,7 @@ async function autoUpdate() {
                 if (status) status.textContent = "You're up to date.";
                 showToast("Already up to date", "info");
             }
-            autoUpdateBtn.style.display = "none";
+            buttons.forEach(btn => { btn.style.display = "none"; });
             const updateLink = document.getElementById("btn-apply-update");
             if (updateLink) updateLink.classList.add("hidden");
         } else {
@@ -470,8 +480,10 @@ async function autoUpdate() {
         if (updateProgress) updateProgress.textContent = `Error: ${error.message}`;
         if (status) status.textContent = `Update failed: ${error.message}`;
         showToast(`Update failed: ${error.message}`, "error");
-        autoUpdateBtn.disabled = false;
-        autoUpdateBtn.textContent = "Update now";
+        buttons.forEach(btn => {
+            btn.disabled = false;
+            btn.textContent = "Update now";
+        });
     }
 }
 
