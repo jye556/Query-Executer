@@ -72,7 +72,7 @@ def _release_metadata() -> Dict[str, Any]:
             raise ValueError("Invalid release metadata")
         return metadata
     except (OSError, ValueError, json.JSONDecodeError):
-        return {"version": "1.0.1", "releases": []}
+        return {"version": "1.0.2", "releases": []}
 
 
 STATIC_DIR = os.path.join(BASE_DIR, "app", "static")
@@ -83,7 +83,7 @@ USE_POSTGRES = bool(DATABASE_URL)
 app = FastAPI(
     title="Query Execute",
     description="A secure, multi-database SQL query workspace.",
-    version="1.0.1",
+    version="1.0.2",
 )
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
