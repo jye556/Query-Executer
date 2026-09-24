@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=v1.0.1">
+    <link rel="stylesheet" href="/static/css/style.css?v=v1.0.2">
 </head>
 <body class="dark-theme auth-page">
     <main class="auth-shell">
@@ -22,6 +22,12 @@
                     <p class="auth-eyebrow">Query Execute</p>
                     <h1 id="login-title">Welcome back</h1>
                 </div>
+            </div>
+            <div class="auth-header-actions">
+                <button type="button" id="btn-theme-toggle" class="icon-button" aria-label="Switch theme" title="Switch theme">
+                    <svg class="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+                    <svg class="theme-icon-moon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.463.402.807a6.5 6.5 0 0 0 8.268 8.268c.344-.215.829-.003.803.397z"/></svg>
+                </button>
             </div>
             <p class="auth-subtitle">Sign in to access your authorized database connections.</p>
             <form id="login-form" class="auth-form">
@@ -44,7 +50,20 @@
         </section>
     </main>
     <script>
-        const form = document.getElementById('login-form');
+        const applyTheme = theme => {
+            const value = theme === 'light' ? 'light' : 'dark';
+            document.documentElement.dataset.theme = value;
+            document.body.classList.toggle('light-theme', value === 'light');
+            document.body.classList.toggle('dark-theme', value === 'dark');
+            const button = document.getElementById('btn-theme-toggle');
+            button?.setAttribute('aria-label', `Switch to ${value === 'dark' ? 'light' : 'dark'} theme`);
+            button?.setAttribute('title', `Switch to ${value === 'dark' ? 'light' : 'dark'} theme`);
+            try { localStorage.setItem('qe-theme', value); } catch (_) {}
+        };
+        document.getElementById('btn-theme-toggle')?.addEventListener('click', () => {
+            applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+        });
+        applyTheme(localStorage.getItem('qe-theme') || 'dark');
         const submit = document.getElementById('login-submit');
         const error = document.getElementById('login-error');
         const totpGroup = document.getElementById('login-totp-group');
@@ -55,6 +74,14 @@
             error.classList.add('hidden');
             submit.disabled = true;
             submit.textContent = 'Signing in…';
+            if (needsTotp && !/^[0-9]{6}$/.test(totpInput.value.trim())) {
+                error.textContent = 'Enter the 6-digit authenticator code to continue.';
+                error.classList.remove('hidden');
+                submit.disabled = false;
+                submit.textContent = 'Verify and sign in';
+                totpInput.focus();
+                return;
+            }
             try {
                 const response = await fetch('/api/auth/login', {
                     method: 'POST',
@@ -68,17 +95,18 @@
                 });
                 const body = await response.json().catch(() => ({}));
                 if (!response.ok) {
-                    if (response.status === 401 && body.detail === 'Invalid authenticator code') {
+                    if (response.status === 401 && body.detail === 'Invalid authenticator code' && !needsTotp) {
                         needsTotp = true;
                         totpGroup.hidden = false;
                         totpInput.required = true;
                         totpInput.focus();
+                        submit.disabled = false;
+                        submit.textContent = 'Verify and sign in';
+                        return;
                     }
                     throw new Error(body.detail || 'Unable to sign in');
                 }
                 const next = new URLSearchParams(window.location.search).get('next');
-                // Only honor a local path supplied by our own redirect.  Never
-                // turn the login form into an open redirector.
                 const destination = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
                 window.location.assign(destination);
             } catch (err) {

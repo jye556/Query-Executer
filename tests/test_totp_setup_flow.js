@@ -40,7 +40,7 @@ const context = {
     sidebarToggle: null, sidebarClose: null, sidebar: { classList: { toggle() {}, add() {}, remove() {} } },
     sidebarLinks: [], btnShowAddConnection: null, btnCancelConnection: null,
     connGroupSelect: null, connNewGroupInput: null, queryGroupFilter: null, queryDbTypeFilter: null,
-    queryDbSearch: null, connectionsGroupFilter: null, connectionsDbTypeFilter: null,
+    queryDbSearch: null, connectionsGroupFilter: null, connectionsDbTypeFilter: null, connectionsSearchInput: null,
     connTogglePwdBtn: null, connPwdInput: { type: "password" }, addConnectionForm: null,
     connDbTypeSelect: null, btnExecuteQuery: null, queryEditor: null, btnExportCsv: null,
     btnClearHistory: null, addConnectionFormContainer: { classList: { add() {}, remove() {} } },

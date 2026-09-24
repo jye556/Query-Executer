@@ -22,7 +22,7 @@ let pendingTotpSetup = false;
 let btnShowAddConnection, addConnectionFormContainer, addConnectionForm,
     btnCancelConnection, connTogglePwdBtn, connPwdInput, connectionsListContainer,
     queryLimitInput, connGroupSelect, connNewGroupInput, queryGroupFilter, queryDbTypeFilter, queryDbSearch,
-    connectionsGroupFilter, connectionsDbTypeFilter, connDbTypeSelect, queryEditor, btnExecuteQuery, executeText, executeSpinner,
+    connectionsGroupFilter, connectionsDbTypeFilter, connectionsSearchInput, connDbTypeSelect, queryEditor, btnExecuteQuery, executeText, executeSpinner,
     resultsPlaceholder, tableScrollContainer, resultCount, executionTime, btnExportCsv,
     errorContainer, errorMessage, btnClearHistory, historyListContainer, toastContainer,
     sidebarToggle, sidebarClose, sidebar, appViews, sidebarLinks, connectionsPanelList,
@@ -163,6 +163,7 @@ function cacheDOMElements() {
     queryDbSearch = document.getElementById("query-db-search");
     connectionsGroupFilter = document.getElementById("connections-group-filter");
     connectionsDbTypeFilter = document.getElementById("connections-db-type-filter");
+    connectionsSearchInput = document.getElementById("connections-search-input");
     connDbTypeSelect = document.getElementById("conn-db-type");
     queryEditor = document.getElementById("query-editor");
     btnExecuteQuery = document.getElementById("btn-execute-query");
@@ -347,6 +348,7 @@ function setupEventListeners() {
     queryDbSearch?.addEventListener("input", renderQueryConnectionPanel);
     connectionsGroupFilter?.addEventListener("change", () => { renderConnectionsList(); fetchConnections(); });
     connectionsDbTypeFilter?.addEventListener("change", () => { renderConnectionsList(); fetchConnections(); });
+    connectionsSearchInput?.addEventListener("input", renderConnectionsList);
     connTogglePwdBtn?.addEventListener("click", () => { connPwdInput.type = connPwdInput.type === "password" ? "text" : "password"; });
     addConnectionForm?.addEventListener("submit", saveConnection);
     document.getElementById("btn-form-test-conn")?.addEventListener("click", testFormConnection);
@@ -429,7 +431,10 @@ function applyTheme(theme) {
     document.body.classList.toggle("light-theme", value === "light");
     document.body.classList.toggle("dark-theme", value === "dark");
     const button = document.getElementById("btn-theme-toggle");
-    if (button) { button.textContent = value === "dark" ? "Light mode" : "Dark mode"; button.setAttribute("aria-label", `Switch to ${value === "dark" ? "light" : "dark"} theme`); }
+    if (button) {
+        button.setAttribute("aria-label", `Switch to ${value === "dark" ? "light" : "dark"} theme`);
+        button.title = `Switch to ${value === "dark" ? "light" : "dark"} theme`;
+    }
     try { localStorage.setItem("qe-theme", value); } catch (_) {}
 }
 function toggleTheme() { applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"); }
@@ -590,9 +595,12 @@ function renderConnectionsList() {
     connectionsListContainer.innerHTML = "";
     const groupFilter = connectionsGroupFilter?.value || "all";
     const dbTypeFilter = connectionsDbTypeFilter?.value || "all";
+    const searchTerm = (connectionsSearchInput?.value || "").trim().toLocaleLowerCase();
     const visible = connections.filter(connection => {
         const groupMatch = groupFilter === "all" || (groupFilter === "ungrouped" ? !connection.group_ids.length : connection.group_ids.includes(Number(groupFilter)));
-        return groupMatch && (dbTypeFilter === "all" || connection.db_type === dbTypeFilter);
+        const searchMatch = !searchTerm || [connection.name, connection.host, connection.database, connection.username, connection.db_type]
+            .some(value => String(value || "").toLocaleLowerCase().includes(searchTerm));
+        return groupMatch && searchMatch && (dbTypeFilter === "all" || connection.db_type === dbTypeFilter);
     });
     if (!visible.length) { connectionsListContainer.innerHTML = '<div class="empty-state"><p>No authorized connections match the current filters.</p></div>'; return; }
     const byGroup = new Map();

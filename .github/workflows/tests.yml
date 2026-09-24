@@ -18,5 +18,7 @@ jobs:
       - run: node tests/test_connection_edit_form.js
       - run: node tests/test_settings_updates.js
       - run: node tests/test_totp_setup_flow.js
+      - run: node tests/test_requested_ui.js
+      - run: node tests/test_login_totp_prompt.js
       - run: bash -n install_linux.sh
       - run: bash -n scripts/publish_github.sh
