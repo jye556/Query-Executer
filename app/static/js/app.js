@@ -585,11 +585,13 @@ function showConnectionForm(connection = null) {
     document.getElementById("form-title").textContent = connection ? "Edit Database Connection" : "Add Database Connection";
     document.getElementById("btn-submit-connection").textContent = connection ? "Update Connection" : "Save Connection";
     if (connection) {
-        document.getElementById("conn-name").value = connection.name; connDbTypeSelect.value = connection.db_type;
-        document.getElementById("conn-host").value = connection.host || ""; document.getElementById("conn-port").value = connection.port || "";
-        document.getElementById("conn-database").value = connection.database || ""; document.getElementById("conn-username").value = connection.username || "";
+        document.getElementById("conn-name").value = connection.name;
+        connDbTypeSelect.value = connection.db_type;
         applyDatabaseDefaults(connection.db_type);
+        document.getElementById("conn-host").value = connection.host || "";
+        document.getElementById("conn-port").value = connection.port || "";
         document.getElementById("conn-database").value = connection.database || "";
+        document.getElementById("conn-username").value = connection.username || "";
         document.getElementById("conn-extra-params").value = JSON.stringify(connection.extra_params || {}, null, 2);
         Array.from(connGroupSelect.options).forEach(option => { option.selected = connection.group_ids.includes(Number(option.value)); });
     } else {

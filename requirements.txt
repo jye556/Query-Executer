@@ -9,3 +9,4 @@ argon2-cffi>=23.1.0
 cryptography>=42.0.0
 pydantic>=2.7.0
 qrcode>=7.4.2
+httpx2>=2.0.0
