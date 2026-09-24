@@ -870,6 +870,23 @@ body {
     flex-wrap: wrap;
 }
 
+.auth-header-actions { margin-left: auto; display: flex; align-items: center; }
+.auth-header-actions .icon-button { flex: none; }
+
+.icon-button {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+    padding: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.theme-icon-moon { display: none; }
+:root[data-theme="light"] .theme-icon-sun { display: none; }
+:root[data-theme="light"] .theme-icon-moon { display: block; }
+.user-menu { margin-left: auto; }
+.header-controls { margin-left: auto; }
+
 .current-user-label {
     color: var(--text-secondary);
     font-size: 0.8rem;
@@ -1947,7 +1964,9 @@ body {
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-xl);
 }
-.auth-brand { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 1rem; }
+.auth-brand { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 0.5rem; }
+.auth-header-actions { display: flex; justify-content: flex-end; margin: -2.5rem 0 1.25rem; }
+.auth-header-actions .icon-button { flex: none; }
 .auth-brand .logo-icon { color: var(--accent); width: 2.75rem; height: 2.75rem; }
 .auth-eyebrow { color: var(--accent); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 .auth-card h1 { font-size: 1.75rem; line-height: 1.2; }
@@ -1962,7 +1981,9 @@ body {
     .auth-shell { width: min(100%, 440px); margin-inline: auto; }
     .settings-tabs { overflow-x: auto; }
     .app-header { flex-wrap: wrap; gap: 1rem; }
-    .header-controls { width: 100%; justify-content: flex-end; }
+    .header-controls { width: 100%; justify-content: flex-end; margin-left: 0; }
+    .user-menu { width: 100%; justify-content: flex-end; margin-left: 0; }
+    .connection-filter-row { flex-wrap: wrap; }
     .page-body {
         flex-direction: column;
     }

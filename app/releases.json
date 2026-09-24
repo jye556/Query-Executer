@@ -1,6 +1,16 @@
 {
-  "version": "1.0.2",
+  "version": "1.0.3",
   "releases": [
+    {
+      "version": "1.0.3",
+      "date": "2026-09-24",
+      "notes": [
+        "Fix login form binding and keep credentials out of URL query strings.",
+        "Prompt for authenticator verification without showing a premature invalid-code error.",
+        "Replace the theme text control with an icon and align account controls to the right.",
+        "Add Database Connections search."
+      ]
+    },
     {
       "version": "1.0.2",
       "date": "2026-09-24",

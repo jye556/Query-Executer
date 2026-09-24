@@ -2,7 +2,7 @@
 
 Query Execute is a self-hosted web app for running SQL against PostgreSQL, MySQL/MariaDB, Firebird, Microsoft SQL Server, and SQLite. Manage saved database connections, organize them into groups, review query history, export results, and optionally protect your account with authenticator-app two-factor authentication (2FA).
 
-**Current version: v1.0.1**
+**Current version: v1.0.3**
 
 ## 1. Choose where to install
 
@@ -201,7 +201,7 @@ The QR code is generated locally; provisioning details are not sent to an extern
 
 The Settings page shows the installed version and release notes. When a newer GitHub release is detected, the app displays an update notice and a link to the release. The link does **not** automatically download, install, or restart the app. An administrator must follow the release instructions and update the server. Back up `.env` and app data before upgrading.
 
-- Current release: **v1.0.1**. See [GitHub releases](https://github.com/jye556/Query-Executer/releases).
+- Current release: **v1.0.3**. See [GitHub releases](https://github.com/jye556/Query-Executer/releases).
 - Docker Compose users can change `GITHUB_REPOSITORY` or `UPDATE_CHECK_URL` in `.env` if using a different release feed. Set `UPDATE_CHECK_URL` to an empty value to disable remote checks.
 
 ## 9. Back up, move, or remove an installation

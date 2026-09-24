@@ -72,7 +72,7 @@ class RequestedEnhancementTests(unittest.TestCase):
         self.assertIn("place-items: center", css)
         self.assertIn("bash install_linux.sh", readme)
         self.assertIn("install_windows.ps1", readme)
-        self.assertIn("v1.0.1", readme)
+        self.assertIn("v1.0.3", readme)
         self.assertIn("BOOTSTRAP_ADMIN_USERNAME=admin", installer)
         self.assertNotIn("admin/admin", installer)
         self.assertIn("UPDATE_CHECK_URL", readme)
@@ -85,8 +85,8 @@ class RequestedEnhancementTests(unittest.TestCase):
              TestClient(app) as client:
             response = client.get("/api/version")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["version"], "1.0.2")
-        self.assertEqual(response.json()["latest_version"], "1.0.2")
+        self.assertEqual(response.json()["version"], "1.0.3")
+        self.assertEqual(response.json()["latest_version"], "v1.0.3")
         self.assertTrue(response.json()["changelog"])
         self.assertIsInstance(response.json()["update_available"], bool)
 
@@ -97,16 +97,16 @@ class RequestedEnhancementTests(unittest.TestCase):
         from app.main import get_version
         response = MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
-            "tag_name": "v1.0.3",
-            "name": "Query Execute 1.0.3",
-            "html_url": "https://github.com/example/project/releases/tag/v1.0.3",
+            "tag_name": "v1.0.4",
+            "name": "Query Execute 1.0.4",
+            "html_url": "https://github.com/example/project/releases/tag/v1.0.4",
         }).encode()
         with patch.dict(os.environ, {"UPDATE_CHECK_URL": "https://api.github.test/releases/latest"}), \
              patch("app.main.urlopen", return_value=response):
             result = asyncio.run(get_version())
-        self.assertEqual(result["latest_version"], "v1.0.3")
+        self.assertEqual(result["latest_version"], "v1.0.4")
         self.assertTrue(result["update_available"])
-        self.assertEqual(result["release_url"], "https://github.com/example/project/releases/tag/v1.0.3")
+        self.assertEqual(result["release_url"], "https://github.com/example/project/releases/tag/v1.0.4")
 
     def test_totp_setup_endpoint_returns_qr_code_for_authenticator_uri(self):
         import asyncio
