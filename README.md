@@ -25,22 +25,23 @@ Do not expose the app directly to the public internet over plain HTTP. For remot
 
 ### Download and install
 
-1. Install Python from [python.org](https://www.python.org/downloads/windows/). During setup, enable **Add Python to PATH**.
-2. In Command Prompt, check Python and Git:
+1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/windows/). During setup, enable **Add Python to PATH**.
+2. Install [Git for Windows](https://git-scm.com/download/win) if `git` is not already available.
+3. In Command Prompt, check the installed tools:
 
    ```bat
    python --version
    git --version
    ```
 
-   Python must be 3.11 or newer. If Git is not installed, install it from [git-scm.com](https://git-scm.com/download/win).
-3. Open Command Prompt and move to the folder where you want to install Query Execute, for example:
+   Python must be version 3.11 or newer. If not, install a newer version, then open a new Command Prompt.
+4. Open Command Prompt and move to the folder where you want to install Query Execute, for example:
 
    ```bat
    cd /d C:\
    ```
 
-4. Clone the public repository with Git:
+5. Clone the public repository with Git:
 
    ```bat
    git clone https://github.com/jye556/Query-Executer.git
@@ -48,20 +49,20 @@ Do not expose the app directly to the public internet over plain HTTP. For remot
    ```
 
    Alternatively, download the ZIP from the [GitHub repository](https://github.com/jye556/Query-Executer) and extract it to a permanent folder.
-5. Start the installer from inside the project folder. For Command Prompt:
+6. Start the installer from inside the project folder. For Command Prompt:
 
    ```bat
    install_windows.bat
    ```
 
    For PowerShell, open PowerShell in the project folder and run `./install_windows.ps1`. If PowerShell blocks it, run `Set-ExecutionPolicy -Scope Process Bypass`, then run `./install_windows.ps1` again.
-6. On first run, the installer creates `.env` and opens it in Notepad. Replace `CHANGE-ME-before-first-login` with a strong, unique password, save the file, and close Notepad. If the installer has stopped, start it again:
+7. On first run, the installer creates `.env` and opens it in Notepad. Replace `CHANGE-ME-before-first-login` on the `BOOTSTRAP_ADMIN_PASSWORD` line with a strong, unique password. Keep the generated `APP_ENCRYPTION_KEY` unchanged. Save the file and close Notepad. If the installer has stopped, start it again from the project folder:
 
    ```bat
    install_windows.bat
    ```
 
-7. The installer creates a virtual environment, installs required packages, creates an empty local app database if one does not already exist, and starts the server. Leave this terminal open while using Query Execute.
+8. The installer creates a virtual environment, installs required packages, initializes an empty local app database if none exists, and starts the server. Leave this terminal open while using Query Execute.
 
 ### Sign in
 
@@ -105,12 +106,12 @@ cd "$HOME"
 git clone https://github.com/jye556/Query-Executer.git
 cd Query-Executer
 
-# Let the installer open .env in Nano the first time it runs
+# Let the installer open `.env` in Nano the first time it runs
 export EDITOR=nano
 bash install_linux.sh
 ```
 
-When Nano opens `.env`, replace `CHANGE-ME-before-first-login` with a strong, unique password. Save with **Ctrl+O**, press **Enter** to confirm, then exit with **Ctrl+X**. The installer creates a private `.venv`, installs the app’s packages, initializes an empty local SQLite metadata database (if none exists), and starts the web server. If the installer stopped after creating `.env`, run it again with `bash install_linux.sh`.
+When Nano opens `.env`, change the `BOOTSTRAP_ADMIN_PASSWORD` line from the placeholder to a strong, unique password. Keep the generated `APP_ENCRYPTION_KEY` unchanged. Save with **Ctrl+O**, press **Enter** to confirm, then exit with **Ctrl+X**. The installer creates a private `.venv`, installs the app’s packages, initializes an empty local SQLite metadata database (if none exists), and starts the web server. If the installer stopped after creating `.env`, run it again with `bash install_linux.sh`.
 
 If `python3 --version` reports a version below 3.11, install Python 3.11 or newer and its matching `venv` package from your Linux distribution before running the installer. The script checks the Python version and will not start with an unsupported version.
 
@@ -220,7 +221,7 @@ For a direct installation, keep the database file and `.env` when updating or mo
 - **Port 8282 is already in use:** stop the other program using port 8282 or configure the app to use another port.
 - **The app cannot connect to a database:** verify host, port, database name/path, firewall, network reachability, and database permissions. In Docker, do not use `localhost` for a database on the host computer.
 - **Saved database passwords cannot be decrypted:** restore the exact `APP_ENCRYPTION_KEY` used when the credentials were saved, or edit the connection and enter its password again using the current key.
-- **The installer reports an existing SQLite database:** it is protecting existing data. Do not delete the file to silence the warning. Back it up and confirm the configured database path before proceeding.
+- **The installer refuses to start with a default password:** edit `.env`, replace the bootstrap-password placeholder with a strong password, and rerun the installer. Keep the generated `APP_ENCRYPTION_KEY` unchanged.
 - **You cannot sign in:** use the bootstrap admin username and password configured for the metadata database. Rerunning the installer does not reset existing user passwords. Do not delete the app database as a password-reset attempt.
 
 For help, open an issue in the [Query Execute GitHub repository](https://github.com/jye556/Query-Executer/issues). Include the app version and relevant error text only. Never post passwords, tokens, connection strings, `.env` contents, or database backups.
