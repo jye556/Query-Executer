@@ -187,6 +187,16 @@ function cacheDOMElements() {
     multiResultsContainer = document.getElementById("multi-results-container");
 }
 
+async function fetchVersionData() {
+    try {
+        const response = await fetch("/api/version", { credentials: "same-origin" });
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (_) {
+        return null;
+    }
+}
+
 async function initialize() {
     cacheDOMElements();
     setupSidebarVisibility();
@@ -224,10 +234,10 @@ window.addEventListener("resize", setupSidebarVisibility);
 function setupEventListeners() {
     const confirmTotp = document.getElementById("btn-confirm-totp-setup");
     const copyTotp = document.getElementById("btn-copy-totp-secret");
-    const cancelTotp = document.getElementById("btn-cancel-totp-setup");
-    const totpDialog = document.getElementById("totp-setup-dialog");
+    const cancelTotpButtons = document.querySelectorAll("[data-cancel-totp-setup]");
     const totpSetupForm = document.getElementById("totp-setup-form");
-    const totpSetupCode = document.getElementById("totp-setup-code");
+    const totpStepOne = document.getElementById("totp-step-one");
+    const totpStepTwo = document.getElementById("totp-step-two");
     const totpSetupSecret = document.getElementById("totp-setup-secret");
     const totpSetupQr = document.getElementById("totp-setup-qr");
     const fallbackCopy = () => {
@@ -249,23 +259,52 @@ function setupEventListeners() {
             showToast("Authenticator key copied", "success");
         } catch (_) { fallbackCopy(); }
     });
-    cancelTotp?.addEventListener("click", () => {
+    totpStepTwo?.querySelectorAll("input, button").forEach(element => { element.disabled = true; });
+    cancelTotpButtons.forEach(button => button.addEventListener("click", () => {
         pendingTotpSetup = false;
-        totpSetupForm?.reset();
-        totpDialog?.close();
+        totpStepOne?.classList.remove("hidden");
+        totpStepTwo?.classList.add("hidden");
+        totpStepTwo?.querySelectorAll("input, button").forEach(element => { element.disabled = true; });
+        document.getElementById("totp-setup-form")?.reset();
+        document.getElementById("totp-setup-dialog")?.close();
+    }));
+    document.getElementById("btn-totp-back")?.addEventListener("click", () => {
+        totpStepOne?.classList.remove("hidden");
+        totpStepTwo?.classList.add("hidden");
+        totpStepTwo?.querySelectorAll("input, button").forEach(element => { element.disabled = true; });
+        document.getElementById("btn-copy-totp-secret")?.focus();
     });
     totpSetupForm?.addEventListener("submit", async event => {
+        const step = event.submitter?.dataset.step || "1";
+        if (!pendingTotpSetup) {
+            event.preventDefault();
+            return;
+        }
+        if (step === "1") {
+            event.preventDefault();
+            totpStepOne?.classList.add("hidden");
+            totpStepTwo?.classList.remove("hidden");
+            totpStepTwo?.querySelectorAll("input, button").forEach(element => { element.disabled = false; });
+            const verifyTotp = document.getElementById("totp-step-two-code");
+            verifyTotp.value = "";
+            verifyTotp.focus();
+            return;
+        }
+        const verifyTotp = document.getElementById("totp-step-two-code");
         event.preventDefault();
-        if (!pendingTotpSetup) return;
+        if (!totpSetupForm.checkValidity()) return;
         confirmTotp.disabled = true;
         try {
             await apiFetch("/api/auth/totp/enable", {
                 method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ code: totpSetupCode.value.trim() }),
+                body: JSON.stringify({ code: verifyTotp.value.trim() }),
             });
             pendingTotpSetup = false;
             totpSetupForm.reset();
-            totpDialog.close();
+            totpStepOne?.classList.remove("hidden");
+            totpStepTwo?.classList.add("hidden");
+            totpStepTwo?.querySelectorAll("input, button").forEach(element => { element.disabled = true; });
+            document.getElementById("totp-setup-dialog").close();
             showToast("Authenticator-app 2FA enabled", "success");
             currentUser.totp_enabled = true;
             document.getElementById("btn-account-security").textContent = "Disable authenticator 2FA";
@@ -351,31 +390,37 @@ function setupEventListeners() {
 
 async function checkForUpdates() {
     const status = document.getElementById("update-status");
-    if (!status) return;
-    try {
-        const update = await apiFetch("/api/version");
-        const current = update.version.startsWith("v") ? update.version : `v${update.version}`;
-        document.getElementById("current-app-version").textContent = current;
-        const badge = document.getElementById("app-version-pill");
-        if (badge) badge.textContent = current;
-        const latestVersion = update.latest_version.startsWith("v") ? update.latest_version : `v${update.latest_version}`;
-        status.textContent = update.update_available ? `New version ${latestVersion} is available.` : `You're up to date (${current}).`;
-        const updateLink = document.getElementById("btn-apply-update");
-        if (updateLink) {
-            updateLink.href = update.release_url;
-            updateLink.dataset.releaseUrl = update.release_url;
-            updateLink.classList.toggle("hidden", !update.update_available);
-        }
-        const pageUpdate = document.getElementById("version-update-banner");
-        if (pageUpdate) {
-            pageUpdate.textContent = update.update_available ? `New version ${latestVersion} is available — see Settings for release notes.` : "";
-            pageUpdate.classList.toggle("hidden", !update.update_available);
-        }
-        const log = document.getElementById("release-log");
-        if (log) log.innerHTML = update.changelog.map(release => `<li><strong>v${escapeHtml(release.version.replace(/^v/, ""))}</strong> — ${escapeHtml((release.notes || []).join("; "))}</li>`).join("");
-    } catch (_) {
-        status.textContent = "Unable to check for updates right now.";
+    const pageUpdate = document.getElementById("version-update-banner");
+    const pageMessage = document.getElementById("version-update-message");
+    const pageLink = document.getElementById("version-update-link");
+    if (!status && !pageUpdate) return;
+    const update = await fetchVersionData();
+    if (!update) {
+        if (status) status.textContent = "Unable to check for updates right now.";
+        if (pageUpdate) pageUpdate.classList.add("hidden");
+        return;
     }
+    const current = update.version.startsWith("v") ? update.version : `v${update.version}`;
+    const badge = document.getElementById("app-version-pill");
+    const currentVersion = document.getElementById("current-app-version");
+    if (currentVersion) currentVersion.textContent = current;
+    if (badge) badge.textContent = current;
+    const latestVersion = update.latest_version.startsWith("v") ? update.latest_version : `v${update.latest_version}`;
+    const message = update.update_available ? `Version ${latestVersion} is available.` : "";
+    if (status) status.textContent = update.update_available ? `New version ${latestVersion} is available.` : `You're up to date (${current}).`;
+    const updateLink = document.getElementById("btn-apply-update");
+    if (updateLink) {
+        updateLink.href = update.release_url;
+        updateLink.dataset.releaseUrl = update.release_url;
+        updateLink.classList.toggle("hidden", !update.update_available);
+    }
+    if (pageUpdate && pageMessage && pageLink) {
+        pageMessage.textContent = message;
+        pageLink.href = update.release_url;
+        pageUpdate.classList.toggle("hidden", !update.update_available);
+    }
+    const log = document.getElementById("release-log");
+    if (log) log.innerHTML = update.changelog.map(release => `<li><strong>v${escapeHtml(release.version.replace(/^v/, ""))}</strong> — ${escapeHtml((release.notes || []).join("; "))}</li>`).join("");
 }
 
 function applyTheme(theme) {
@@ -398,10 +443,14 @@ async function manageTotp() {
             image.setAttribute("shape-rendering", "crispEdges");
             image.setAttribute("preserveAspectRatio", "xMidYMid meet");
             image.src = setup.qr_code_data_url;
-            document.getElementById("totp-setup-code").value = "";
+            document.getElementById("totp-step-two-code").value = "";
+            totpSetupForm?.reset();
             pendingTotpSetup = true;
+            totpStepOne?.classList.remove("hidden");
+            totpStepTwo?.classList.add("hidden");
+            totpStepTwo?.querySelectorAll("input, button").forEach(element => { element.disabled = true; });
             document.getElementById("totp-setup-dialog").showModal();
-            document.getElementById("totp-setup-code").focus();
+            document.getElementById("btn-copy-totp-secret").focus();
         } catch (error) { showToast(error.message, "error"); }
         return;
     }

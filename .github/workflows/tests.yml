@@ -16,5 +16,7 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - run: node --check app/static/js/app.js
       - run: node tests/test_connection_edit_form.js
+      - run: node tests/test_settings_updates.js
+      - run: node tests/test_totp_setup_flow.js
       - run: bash -n install_linux.sh
       - run: bash -n scripts/publish_github.sh

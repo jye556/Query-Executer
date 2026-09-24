@@ -7,14 +7,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=v1.0.1">
-    <script defer src="/static/js/app.js?v=v1.0.1"></script>
+    <link rel="stylesheet" href="/static/css/style.css?v=v1.0.2">
+    <script defer src="/static/js/app.js?v=v1.0.2"></script>
 </head>
 <body class="dark-theme">
     <div class="app-container">
         <!-- HEADER -->
         <header class="app-header">
-            <p id="version-update-banner" class="version-update-banner hidden" role="status"></p>
+            <div class="version-update-banner hidden" id="version-update-banner" role="status">
+                <span id="version-update-message"></span>
+                <a id="version-update-link" href="#" target="_blank" rel="noopener noreferrer">View update</a>
+            </div>
             <div class="logo-area">
                 <button class="sidebar-toggle-btn" id="sidebar-toggle" aria-label="Toggle navigation">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -33,7 +36,8 @@
                     </svg>
                 </div>
                 <div class="logo-text">
-                    <h1>Query Execute <span class="app-version-pill" id="app-version-pill">v1.0.1</span></h1>
+                    <h1>Query Execute</h1>
+                    <span class="app-version-pill" id="app-version-pill">v1.0.2</span>
                 </div>
             </div>
             <div class="header-controls">
@@ -223,7 +227,7 @@
                         </section>
                         <section class="settings-tab-panel hidden" id="updates-settings">
                             <h3>Application updates</h3>
-                            <p>Installed version: <strong id="current-app-version">v1.0.1</strong></p>
+                            <p>Installed version: <strong id="current-app-version">v1.0.2</strong></p>
                             <p id="update-status" role="status">Checking for updates…</p>
                             <a id="btn-apply-update" class="btn btn-accent hidden" href="#" target="_blank" rel="noopener noreferrer">Open release page</a>
                             <ol id="release-log" class="release-log"></ol>
@@ -387,20 +391,33 @@
 
     <dialog id="totp-setup-dialog" class="totp-setup-dialog" aria-labelledby="totp-setup-title">
         <form id="totp-setup-form">
-            <h2 id="totp-setup-title">Set up authenticator app</h2>
-            <p>Add this key in your authenticator app, or scan the QR code. Then enter its current six-digit code.</p>
-            <img id="totp-setup-qr" class="totp-setup-qr" alt="Authenticator app setup QR code">
-            <label for="totp-setup-secret">Setup key</label>
-            <div class="totp-secret-row">
-                <code id="totp-setup-secret"></code>
-                <button type="button" class="btn btn-secondary" id="btn-copy-totp-secret">Copy key</button>
-            </div>
-            <label for="totp-setup-code">Authenticator code</label>
-            <input id="totp-setup-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
-            <div class="form-actions">
-                <button type="button" class="btn btn-secondary" id="btn-cancel-totp-setup">Cancel</button>
-                <button type="submit" class="btn btn-accent" id="btn-confirm-totp-setup">Enable 2FA</button>
-            </div>
+            <section id="totp-step-one" class="totp-step">
+                <p class="totp-step-indicator">Step 1 of 2</p>
+                <h2 id="totp-setup-title">Set up authenticator app</h2>
+                <p>Scan this QR code with your authenticator app, or enter the setup key manually.</p>
+                <img id="totp-setup-qr" class="totp-setup-qr" alt="Authenticator app setup QR code">
+                <label for="totp-setup-secret">Setup key</label>
+                <div class="totp-secret-row">
+                    <code id="totp-setup-secret"></code>
+                    <button type="button" class="btn btn-secondary" id="btn-copy-totp-secret">Copy key</button>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" data-cancel-totp-setup>Cancel</button>
+                    <button type="submit" class="btn btn-accent" data-step="1">Next</button>
+                </div>
+            </section>
+            <section id="totp-step-two" class="totp-step hidden" aria-labelledby="totp-step-two-title">
+                <p class="totp-step-indicator">Step 2 of 2</p>
+                <h2 id="totp-step-two-title">Verify authenticator code</h2>
+                <p>Enter the current six-digit code shown in your authenticator app to enable 2FA.</p>
+                <label for="totp-step-two-code">Authenticator code</label>
+                <input id="totp-step-two-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="btn-totp-back">Back</button>
+                    <button type="button" class="btn btn-secondary" data-cancel-totp-setup>Cancel</button>
+                    <button type="submit" class="btn btn-accent" id="btn-confirm-totp-setup" data-step="2">Enable 2FA</button>
+                </div>
+            </section>
         </form>
     </dialog>
 

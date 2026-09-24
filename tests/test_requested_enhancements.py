@@ -54,7 +54,10 @@ class RequestedEnhancementTests(unittest.TestCase):
         self.assertIn('id="btn-account-security"', template)
         self.assertIn('id="btn-apply-update"', template)
         self.assertIn('id="release-log"', template)
-        self.assertIn('id="version-update-banner"', template)
+        self.assertIn('id="version-update-link"', template)
+        self.assertIn('id="app-version-pill"', template)
+        self.assertIn('<h1>Query Execute</h1>', template)
+        self.assertIn('class="app-header"', template)
         self.assertNotIn('id="btn-account-security"', template.split('</header>', 1)[0])
 
     def test_login_centering_and_installers_are_documented(self):
@@ -82,8 +85,8 @@ class RequestedEnhancementTests(unittest.TestCase):
              TestClient(app) as client:
             response = client.get("/api/version")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["version"], "1.0.1")
-        self.assertEqual(response.json()["latest_version"], "1.0.1")
+        self.assertEqual(response.json()["version"], "1.0.2")
+        self.assertEqual(response.json()["latest_version"], "1.0.2")
         self.assertTrue(response.json()["changelog"])
         self.assertIsInstance(response.json()["update_available"], bool)
 
@@ -94,16 +97,16 @@ class RequestedEnhancementTests(unittest.TestCase):
         from app.main import get_version
         response = MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
-            "tag_name": "v1.0.2",
-            "name": "Query Execute 1.0.2",
-            "html_url": "https://github.com/example/project/releases/tag/v1.0.2",
+            "tag_name": "v1.0.3",
+            "name": "Query Execute 1.0.3",
+            "html_url": "https://github.com/example/project/releases/tag/v1.0.3",
         }).encode()
         with patch.dict(os.environ, {"UPDATE_CHECK_URL": "https://api.github.test/releases/latest"}), \
              patch("app.main.urlopen", return_value=response):
             result = asyncio.run(get_version())
-        self.assertEqual(result["latest_version"], "v1.0.2")
+        self.assertEqual(result["latest_version"], "v1.0.3")
         self.assertTrue(result["update_available"])
-        self.assertEqual(result["release_url"], "https://github.com/example/project/releases/tag/v1.0.2")
+        self.assertEqual(result["release_url"], "https://github.com/example/project/releases/tag/v1.0.3")
 
     def test_totp_setup_endpoint_returns_qr_code_for_authenticator_uri(self):
         import asyncio
@@ -138,7 +141,8 @@ class RequestedEnhancementTests(unittest.TestCase):
         self.assertIn('id="totp-setup-secret"', template)
         self.assertIn('id="totp-setup-qr"', template)
         self.assertIn('id="btn-copy-totp-secret"', template)
-        self.assertIn('id="totp-setup-code"', template)
+        self.assertIn('id="totp-step-two-code"', template)
+        self.assertIn('id="totp-step-two"', template)
         self.assertIn('navigator.clipboard.writeText', script)
         self.assertIn('setup.qr_code_data_url', script)
         self.assertNotIn("Add this key to your authenticator app", script)

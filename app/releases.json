@@ -1,11 +1,12 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "releases": [
     {
-      "version": "1.0.0",
+      "version": "1.0.2",
       "date": "2026-09-24",
       "notes": [
-        "Initial versioned release"
+        "Show authenticator setup as a separate verification step.",
+        "Display the app version and available GitHub update in the header."
       ]
     },
     {
@@ -17,6 +18,13 @@
         "Add version display, update checking, and release notes.",
         "Improve buttons and center the login form.",
         "Add Linux and Windows setup scripts and GitHub publishing documentation."
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-09-24",
+      "notes": [
+        "Initial versioned release"
       ]
     }
   ]
