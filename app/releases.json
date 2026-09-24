@@ -1,6 +1,14 @@
 {
-  "version": "1.0.3",
+  "version": "1.0.4",
   "releases": [
+    {
+      "version": "1.0.4",
+      "date": "2026-09-25",
+      "notes": [
+        "Add auto-update button to fetch and apply updates from GitHub.",
+        "Display Update now button in version banner at top of page."
+      ]
+    },
     {
       "version": "1.0.3",
       "date": "2026-09-24",
