@@ -1911,6 +1911,112 @@ async def get_query_history(limit: int = Query(50, ge=1, le=200), user: Dict[str
         conn.close()
 
 
+@app.post("/api/update")
+async def update_application(user: Dict[str, Any] = Depends(admin_user)):
+    """Trigger application self-update from GitHub (admin only)."""
+    import subprocess
+    import sys
+    import os
+
+    try:
+        # Get the repository root
+        repo_root = BASE_DIR
+
+        # Step 1: Fetch latest changes
+        result = subprocess.run(
+            ["git", "fetch", "origin"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return {"success": False, "error": f"Git fetch failed: {result.stderr}"}
+
+        # Step 2: Check if there are updates
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        local_sha = result.stdout.strip()
+
+        result = subprocess.run(
+            ["git", "rev-parse", "origin/main"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        remote_sha = result.stdout.strip()
+
+        if local_sha == remote_sha:
+            return {"success": True, "message": "Already up to date", "updated": False}
+
+        # Step 3: Pull latest changes
+        result = subprocess.run(
+            ["git", "pull", "origin", "main"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            return {"success": False, "error": f"Git pull failed: {result.stderr}"}
+
+        # Step 4: Install/update dependencies
+        python_bin = sys.executable
+        venv_python = os.path.join(repo_root, ".venv", "bin", "python")
+        if os.path.exists(venv_python):
+            python_bin = venv_python
+
+        result = subprocess.run(
+            [python_bin, "-m", "pip", "install", "-r", "requirements.txt"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            return {"success": False, "error": f"Dependency install failed: {result.stderr}"}
+
+        # Step 5: Run database migrations
+        result = subprocess.run(
+            [python_bin, "-c", "from app.main import init_db; init_db()"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return {"success": False, "error": f"Database migration failed: {result.stderr}"}
+
+        # Step 6: Verify version
+        result = subprocess.run(
+            [python_bin, "-c", "import json; print(json.load(open('app/releases.json'))['version'])"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        new_version = result.stdout.strip()
+
+        return {
+            "success": True,
+            "message": f"Updated to version {new_version}. Please restart the application.",
+            "updated": True,
+            "new_version": new_version,
+            "restart_required": True,
+        }
+
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Update timed out"}
+    except Exception as exc:
+        return {"success": False, "error": f"Update failed: {str(exc)}"}
+
+
 @app.delete("/api/history")
 async def clear_query_history(user: Dict[str, Any] = Depends(current_user)):
     conn = get_db_conn()

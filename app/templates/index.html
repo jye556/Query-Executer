@@ -229,7 +229,11 @@
                             <h3>Application updates</h3>
                             <p>Installed version: <strong id="current-app-version">v1.0.3</strong></p>
                             <p id="update-status" role="status">Checking for updates…</p>
-                            <a id="btn-apply-update" class="btn btn-accent hidden" href="#" target="_blank" rel="noopener noreferrer">Open release page</a>
+                            <div class="update-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+                                <a id="btn-apply-update" class="btn btn-accent hidden" href="#" target="_blank" rel="noopener noreferrer">Open release page</a>
+                                <button type="button" class="btn btn-primary" id="btn-auto-update" style="display: none;">Update now</button>
+                            </div>
+                            <p id="update-progress" class="update-progress" style="display: none; color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.5rem;"></p>
                             <ol id="release-log" class="release-log"></ol>
                         </section>
                     </section>

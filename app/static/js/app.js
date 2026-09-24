@@ -324,6 +324,7 @@ function setupEventListeners() {
     document.getElementById("btn-apply-update")?.addEventListener("click", event => {
         event.currentTarget.href = event.currentTarget.dataset.releaseUrl || "#";
     });
+    document.getElementById("btn-auto-update")?.addEventListener("click", autoUpdate);
     sidebarToggle?.addEventListener("click", () => sidebar.classList.toggle("hidden"));
     sidebarClose?.addEventListener("click", () => sidebar.classList.add("hidden"));
     sidebarLinks.forEach(link => link.addEventListener("click", event => {
@@ -395,11 +396,14 @@ async function checkForUpdates() {
     const pageUpdate = document.getElementById("version-update-banner");
     const pageMessage = document.getElementById("version-update-message");
     const pageLink = document.getElementById("version-update-link");
+    const autoUpdateBtn = document.getElementById("btn-auto-update");
+    const updateProgress = document.getElementById("update-progress");
     if (!status && !pageUpdate) return;
     const update = await fetchVersionData();
     if (!update) {
         if (status) status.textContent = "Unable to check for updates right now.";
         if (pageUpdate) pageUpdate.classList.add("hidden");
+        if (autoUpdateBtn) autoUpdateBtn.style.display = "none";
         return;
     }
     const current = update.version.startsWith("v") ? update.version : `v${update.version}`;
@@ -416,6 +420,9 @@ async function checkForUpdates() {
         updateLink.dataset.releaseUrl = update.release_url;
         updateLink.classList.toggle("hidden", !update.update_available);
     }
+    if (autoUpdateBtn) {
+        autoUpdateBtn.style.display = update.update_available ? "inline-flex" : "none";
+    }
     if (pageUpdate && pageMessage && pageLink) {
         pageMessage.textContent = message;
         pageLink.href = update.release_url;
@@ -423,6 +430,49 @@ async function checkForUpdates() {
     }
     const log = document.getElementById("release-log");
     if (log) log.innerHTML = update.changelog.map(release => `<li><strong>v${escapeHtml(release.version.replace(/^v/, ""))}</strong> — ${escapeHtml((release.notes || []).join("; "))}</li>`).join("");
+}
+
+async function autoUpdate() {
+    const autoUpdateBtn = document.getElementById("btn-auto-update");
+    const updateProgress = document.getElementById("update-progress");
+    const status = document.getElementById("update-status");
+
+    if (!autoUpdateBtn) return;
+
+    autoUpdateBtn.disabled = true;
+    autoUpdateBtn.textContent = "Updating...";
+    if (updateProgress) {
+        updateProgress.style.display = "block";
+        updateProgress.textContent = "Fetching updates...";
+    }
+    if (status) status.textContent = "Updating...";
+
+    try {
+        const response = await apiFetch("/api/update", { method: "POST" });
+
+        if (response.success) {
+            if (response.updated) {
+                if (updateProgress) updateProgress.textContent = `Updated to ${response.new_version}. Restart required.`;
+                if (status) status.textContent = `Updated to ${response.new_version}. Please restart the application.`;
+                showToast(`Updated to version ${response.new_version}. Please restart the application.`, "success");
+            } else {
+                if (updateProgress) updateProgress.textContent = "Already up to date.";
+                if (status) status.textContent = "You're up to date.";
+                showToast("Already up to date", "info");
+            }
+            autoUpdateBtn.style.display = "none";
+            const updateLink = document.getElementById("btn-apply-update");
+            if (updateLink) updateLink.classList.add("hidden");
+        } else {
+            throw new Error(response.error || "Update failed");
+        }
+    } catch (error) {
+        if (updateProgress) updateProgress.textContent = `Error: ${error.message}`;
+        if (status) status.textContent = `Update failed: ${error.message}`;
+        showToast(`Update failed: ${error.message}`, "error");
+        autoUpdateBtn.disabled = false;
+        autoUpdateBtn.textContent = "Update now";
+    }
 }
 
 function applyTheme(theme) {
