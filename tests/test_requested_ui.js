@@ -7,8 +7,10 @@ const root = path.join(__dirname, "..");
 const template = fs.readFileSync(path.join(root, "app/templates/index.html"), "utf8");
 const script = fs.readFileSync(path.join(root, "app/static/js/app.js"), "utf8");
 const css = fs.readFileSync(path.join(root, "app/static/css/style.css"), "utf8");
+const login = fs.readFileSync(path.join(root, "app/templates/login.html"), "utf8");
 
-assert.match(template, /id="app-version-pill"[^>]*>v1\.0\.2<\/span>/);
+assert.match(template, /id="app-version-pill"[^>]*>v1\.0\.3<\/span>/);
+assert.match(login, /style\.css\?v=v1\.0\.3/);
 const controls = template.match(/<div class="header-controls">([\s\S]*?)<\/div>\s*<\/header>/)?.[1];
 assert.ok(controls);
 assert.doesNotMatch(controls, /status-indicator|Server Active|connection-status-text/);
