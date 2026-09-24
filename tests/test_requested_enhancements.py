@@ -86,7 +86,7 @@ class RequestedEnhancementTests(unittest.TestCase):
             response = client.get("/api/version")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["version"], "1.0.3")
-        self.assertEqual(response.json()["latest_version"], "1.0.3")
+        self.assertEqual(response.json()["latest_version"], "v1.0.3")
         self.assertTrue(response.json()["changelog"])
         self.assertIsInstance(response.json()["update_available"], bool)
 
