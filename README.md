@@ -1,82 +1,89 @@
 # Query Execute
 
-A self-hosted SQL workspace for PostgreSQL, MySQL/MariaDB, Firebird, Microsoft SQL Server, and SQLite. It manages saved, access-controlled connections, executes queries, and provides query history, CSV export, database/group filters, and optional authenticator-app two-factor authentication.
+A private, self-hosted workspace for working with PostgreSQL, MySQL/MariaDB, Firebird, Microsoft SQL Server, and SQLite from your browser.
 
-**Current version: `v1.0.1`** — release log: [`app/releases.json`](app/releases.json).
+**Current version: v1.0.1**
 
-## Features
+## What you can do
 
-- Authenticated app with admin/writer/viewer roles, group-based access, and CSRF-protected API mutations.
-- Saved connections with encrypted credentials and server-side authorization.
-- Search connections by database name and group by assigned group.
-- Query execution, result editing where supported, history, and CSV export.
-- Optional TOTP 2FA with locally generated QR code and copyable setup key.
-- Settings page for 2FA, version/update information, and release log.
-- PostgreSQL metadata in Docker; SQLite metadata for direct Python runs.
+- Save database connections and group them for easier access.
+- Run SQL queries and view results in your browser.
+- Review query history and export results as CSV.
+- Give team members appropriate admin, writer, or viewer access.
+- Protect your account with optional authenticator-app two-factor authentication (2FA).
 
-## Quick start with Docker Compose
+## Install and start
 
-Requirements: Docker Engine/Desktop with Docker Compose v2.
+Choose one of the options below. The first start creates an empty application database and an `admin` account. You choose the admin password during setup; there is no shared default password.
 
-1. Copy `.env.example` to `.env`.
-2. Edit `.env`: set strong unique values for `POSTGRES_PASSWORD`, `BOOTSTRAP_ADMIN_PASSWORD`, and `APP_ENCRYPTION_KEY` (generate the latter with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`), and set your `GITHUB_REPOSITORY=jye556/Query-Executer`. Never commit `.env`.
-3. Run `docker compose up --build -d`.
-4. Open <http://localhost:8282> and sign in as `admin` with the password configured in `.env`. A fresh metadata DB creates the first admin from those settings. There is no `admin/admin` default.
+### Windows
 
-For HTTPS deployments, configure TLS at a reverse proxy and set `COOKIE_SECURE=1`. Metadata is in the `pgdata` volume. `docker compose down -v` deletes it; do not use `-v` unless intentional.
+1. Install Python 3.11 or newer.
+2. Download or clone this repository, then open its folder.
+3. Run `install_windows.bat` (Command Prompt) or `install_windows.ps1` (PowerShell).
+4. When prompted, set a strong password in the local `.env` file. Keep that file private.
+5. Open <http://localhost:8282> and sign in as `admin` with the password you chose.
 
-## Linux and Windows direct installation
+### Linux
 
-Requires Python 3.11+. The scripts create a virtual environment, install `requirements.txt`, and start the app with an empty local SQLite metadata DB; the first admin is bootstrapped from `.env`.
+1. Install Python 3.11 or newer.
+2. Download or clone this repository and open a terminal in its folder.
+3. Run:
 
-- Linux/macOS: `bash install_linux.sh`
-- Windows PowerShell: `./install_windows.ps1` (use `Set-ExecutionPolicy -Scope Process Bypass` if required)
-- Windows Command Prompt: `install_windows.bat`
+   ```bash
+   bash install_linux.sh
+   ```
 
-On first run the script creates `.env` with username `admin`, a temporary password placeholder, and a generated encryption key. It opens `.env` for editing (or pauses for manual editing if the Linux shell is non-interactive). Replace the placeholder with a unique strong password before the server starts. There is no built-in `admin/admin` login. Keep `.env` and `query_execute.db` private.
+4. Set a strong password in the generated `.env` file, then rerun the command if setup asks you to.
+5. Open <http://localhost:8282> and sign in as `admin` with the password you chose.
 
-Manual setup: create and activate a venv, run `python -m pip install -r requirements.txt`, set `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD`, and a stable `APP_ENCRYPTION_KEY`, then run `python -m uvicorn app.main:app --host 127.0.0.1 --port 8282`.
+The installers create a local virtual environment, install the required Python packages, and prepare an empty SQLite metadata database. They stop rather than overwrite an existing local database. Back up existing data before moving or replacing database files.
 
-Firebird and SQL Server also require native client libraries/ODBC drivers on the host. The Docker image uses Debian 12 with Firebird client and Microsoft ODBC Driver 18.
+### Docker (Windows, macOS, or Linux)
 
-## Versions and updates
+1. Install Docker Desktop or Docker Engine with Docker Compose v2.
+2. Copy `.env.example` to `.env`.
+3. Edit `.env` and set strong, unique values for `POSTGRES_PASSWORD`, `BOOTSTRAP_ADMIN_PASSWORD`, and `APP_ENCRYPTION_KEY`. Keep `.env` private.
+4. Start the app:
 
-Settings shows the installed version, checks the configured GitHub Releases API feed, displays the bundled release log, and alerts when a newer tag is available. The update link opens the release page; it does **not** install code or redeploy the server.
+   ```bash
+   docker compose up --build -d
+   ```
 
-Set `GITHUB_REPOSITORY=jye556/Query-Executer`; Compose derives default API and release URLs from it. Optionally set `UPDATE_CHECK_URL` or `UPDATE_RELEASES_URL`. Set `UPDATE_CHECK_URL=` to disable remote checks (local release notes remain visible).
+5. Visit <http://localhost:8282> and sign in as `admin` using the password in `.env`.
 
-- **v1.0.1** — Move 2FA into Settings; group connections; add update checking and release log; polish buttons; center login; add cross-platform installers and GitHub docs.
+Docker stores application data in a persistent volume. `docker compose down -v` deletes that data; do not use `-v` unless you intend to erase it.
+
+## Connect a database
+
+After signing in, add a connection with its database type, server details, database name, and credentials. The app stores connection passwords encrypted. Make sure the database is reachable from the machine or container running Query Execute, and use an account with only the database permissions it needs.
+
+For Firebird and Microsoft SQL Server, direct installation may also require native client libraries or an ODBC driver on your computer. The Docker image includes the supported client libraries.
+
+## Enable two-factor authentication
+
+1. Open **Settings** in the sidebar.
+2. Choose the authenticator-app setup option.
+3. Scan the QR code with an authenticator app, or enter the displayed setup key manually.
+4. Enter the current six-digit code to confirm setup.
+
+Keep the setup key private. The app generates the QR code locally; it is not sent to an external QR service.
+
+## Updates and release history
+
+The Settings page shows the installed version and release notes. If a newer GitHub release is available, the app displays an update notice and a button to open that release. The button does not automatically install or restart the app; an administrator must update the installation.
+
+- **v1.0.1** — Settings-based 2FA, grouped connections, update notices and release history, interface refinements, and platform installers.
 - **v1.0.0** — Initial versioned release.
 
-For each future enhancement/release, update the app version, `app/releases.json`, frontend cache-busting versions, and release notes, then publish a matching `vX.Y.Z` GitHub tag.
+## Data and security notes
 
-## Publish to GitHub step by step
+- Choose strong, unique passwords. There is no `admin/admin` default login.
+- Keep `.env`, database files, backups, and connection credentials private.
+- For a public network, put the app behind HTTPS and configure secure cookies.
+- Back up the Docker data volume or SQLite database regularly.
+- Query Execute does not automatically install updates from the update notice.
 
-The repository is `https://github.com/jye556/Query-Executer`. The helper script runs tests, checks that local config/database/backup files are not tracked, pushes the committed branch to `main`, and verifies the remote commit. Run it from the checkout:
+## Help
 
-```bash
-bash scripts/publish_github.sh --check   # validate without publishing
-bash scripts/publish_github.sh           # push commits to main
-bash scripts/publish_github.sh --release # push and create the matching GitHub release
-```
-
-Authenticate first with `gh auth login` (or `gh auth refresh -h github.com -s repo,workflow`), using an account that has repository write access. Never paste tokens into chat or put them in a remote URL. The script expects a clean working tree and the configured `origin`; it does not commit files for you.
-
-Manual equivalent, if you prefer to inspect each step:
-
-1. Run tests and inspect `git status` / `git diff`.
-2. Stage and commit only intended application files. Do not add `.env`, local databases, backups, or dumps.
-3. Push the reviewed commit: `git push origin HEAD:main`.
-4. Verify `git ls-remote origin refs/heads/main` matches `git rev-parse HEAD`.
-5. Create release `v1.0.1` in GitHub after confirming that release has not already been made; the app version and `app/releases.json` are the source of the tag/version.
-
-## Development checks
-
-```bash
-python -m unittest discover -s tests -v
-node --check app/static/js/app.js
-bash -n install_linux.sh
-docker compose config --quiet
-```
-
-GitHub Actions runs tests for pushes and pull requests. The app listens on port 8282. See [`PROGRAMMING_GUIDE.md`](PROGRAMMING_GUIDE.md) for architecture and development conventions.
+Open an issue in the [GitHub repository](https://github.com/jye556/Query-Executer/issues) and include the app version and relevant error message. Do not include passwords, tokens, connection strings, or other secrets.
