@@ -902,7 +902,7 @@ async def get_version():
         key=lambda release: tuple(int(part) for part in release.get("version", "0.0.0").lstrip("v").split(".")),
         default={"version": app.version},
     )
-    default_feed = f"https://api.github.com/repos/{os.getenv('GITHUB_REPOSITORY', 'your-github-username/query-execute')}/releases/latest"
+    default_feed = f"https://api.github.com/repos/{os.getenv('GITHUB_REPOSITORY', 'jye556/Query-Executer')}/releases/latest"
     update_url = os.getenv("UPDATE_CHECK_URL", default_feed).strip()
     if update_url:
         try:
@@ -920,7 +920,7 @@ async def get_version():
         "version": app.version,
         "latest_version": latest.get("version", app.version),
         "update_available": latest_semver > current,
-        "release_url": latest.get("html_url") or os.getenv("UPDATE_RELEASES_URL", f"https://github.com/{os.getenv('GITHUB_REPOSITORY', 'your-github-username/query-execute')}/releases/latest"),
+        "release_url": latest.get("html_url") or os.getenv("UPDATE_RELEASES_URL", f"https://github.com/{os.getenv('GITHUB_REPOSITORY', 'jye556/Query-Executer')}/releases/latest"),
         "changelog": releases,
     }
 

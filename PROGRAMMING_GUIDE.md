@@ -322,7 +322,7 @@ The Query Editor layout has:
 Use `escapeHtml()` or DOM text APIs when rendering user-controlled names, group labels, queries, and database metadata. Never interpolate secrets into HTML.
 
 - The authenticated app checks the GitHub Releases endpoint from Settings and on initialization; an available update displays a banner and release-page link. This only points to a release: operators still redeploy the app themselves.
-- Set `GITHUB_REPOSITORY=OWNER/REPOSITORY` in the environment before publishing. `UPDATE_CHECK_URL` can override the feed; set it empty to disable remote checks. `UPDATE_RELEASES_URL` overrides the fallback release page.
+- Set `GITHUB_REPOSITORY=OWNER/REPOSITORY` (default: `jye556/Query-Executer`) before publishing. `UPDATE_CHECK_URL` can override the feed; set it empty to disable remote checks. `UPDATE_RELEASES_URL` overrides the fallback release page.
 - Version and release history are declared in `app/releases.json`; keep that file, the FastAPI version, UI badge, and static-asset cache query versions in sync for each release.
 
 ### Linux/Windows first-run installer

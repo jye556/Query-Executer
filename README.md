@@ -19,7 +19,7 @@ A self-hosted SQL workspace for PostgreSQL, MySQL/MariaDB, Firebird, Microsoft S
 Requirements: Docker Engine/Desktop with Docker Compose v2.
 
 1. Copy `.env.example` to `.env`.
-2. Edit `.env`: set strong unique values for `POSTGRES_PASSWORD`, `BOOTSTRAP_ADMIN_PASSWORD`, and `APP_ENCRYPTION_KEY` (generate the latter with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`), and set your `GITHUB_REPOSITORY=OWNER/REPOSITORY`. Never commit `.env`.
+2. Edit `.env`: set strong unique values for `POSTGRES_PASSWORD`, `BOOTSTRAP_ADMIN_PASSWORD`, and `APP_ENCRYPTION_KEY` (generate the latter with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`), and set your `GITHUB_REPOSITORY=jye556/Query-Executer`. Never commit `.env`.
 3. Run `docker compose up --build -d`.
 4. Open <http://localhost:8282> and sign in as `admin` with the password configured in `.env`. A fresh metadata DB creates the first admin from those settings. There is no `admin/admin` default.
 
@@ -43,7 +43,7 @@ Firebird and SQL Server also require native client libraries/ODBC drivers on the
 
 Settings shows the installed version, checks the configured GitHub Releases API feed, displays the bundled release log, and alerts when a newer tag is available. The update link opens the release page; it does **not** install code or redeploy the server.
 
-Set `GITHUB_REPOSITORY=OWNER/REPOSITORY`; Compose derives default API and release URLs from it. Optionally set `UPDATE_CHECK_URL` or `UPDATE_RELEASES_URL`. Set `UPDATE_CHECK_URL=` to disable remote checks (local release notes remain visible).
+Set `GITHUB_REPOSITORY=jye556/Query-Executer`; Compose derives default API and release URLs from it. Optionally set `UPDATE_CHECK_URL` or `UPDATE_RELEASES_URL`. Set `UPDATE_CHECK_URL=` to disable remote checks (local release notes remain visible).
 
 - **v1.0.1** — Move 2FA into Settings; group connections; add update checking and release log; polish buttons; center login; add cross-platform installers and GitHub docs.
 - **v1.0.0** — Initial versioned release.
@@ -68,10 +68,10 @@ For each future enhancement/release, update the app version, `app/releases.json`
 
    ```bash
    git commit -m "Release Query Execute v1.0.1"
-   git remote add origin https://github.com/<YOUR-USER>/<YOUR-REPOSITORY>.git
+   git remote add origin https://github.com/jye556/Query-Executer.git
    git push -u origin main
    ```
-5. Verify files and the Actions tab on GitHub. Create release tag `v1.0.1` with matching notes. Set `GITHUB_REPOSITORY=OWNER/REPOSITORY` in deployments to enable accurate update checks.
+5. Verify files and the Actions tab on GitHub. Create release tag `v1.0.1` with matching notes. Set `GITHUB_REPOSITORY=jye556/Query-Executer` in deployments to enable accurate update checks.
 
 ## Development checks
 

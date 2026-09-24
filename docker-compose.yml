@@ -13,9 +13,9 @@ services:
       - APP_ENCRYPTION_KEY=${APP_ENCRYPTION_KEY:?Set APP_ENCRYPTION_KEY}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       - COOKIE_SECURE=${COOKIE_SECURE:-0}
-      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:-your-github-username/query-execute}
-      - UPDATE_CHECK_URL=${UPDATE_CHECK_URL:-https://api.github.com/repos/${GITHUB_REPOSITORY:-your-github-username/query-execute}/releases/latest}
-      - UPDATE_RELEASES_URL=${UPDATE_RELEASES_URL:-https://github.com/${GITHUB_REPOSITORY:-your-github-username/query-execute}/releases/latest}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:-jye556/Query-Executer}
+      - UPDATE_CHECK_URL=${UPDATE_CHECK_URL:-https://api.github.com/repos/${GITHUB_REPOSITORY:-jye556/Query-Executer}/releases/latest}
+      - UPDATE_RELEASES_URL=${UPDATE_RELEASES_URL:-https://github.com/${GITHUB_REPOSITORY:-jye556/Query-Executer}/releases/latest}
     depends_on:
       db:
         condition: service_healthy
