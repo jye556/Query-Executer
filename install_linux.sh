@@ -29,14 +29,8 @@ if [ "${BOOTSTRAP_ADMIN_PASSWORD:-}" = "CHANGE-ME-before-first-login" ] || [ -z 
   echo "Set a unique BOOTSTRAP_ADMIN_PASSWORD in .env before starting Query Execute." >&2
   exit 1
 fi
-if [ -z "${DATABASE_URL:-}" ] && [ -f "${SQLITE_DB_PATH:-query_execute.db}" ]; then
-  echo "Refusing to reuse an existing SQLite DB for first-run installer; configure DATABASE_URL or back it up and move it deliberately." >&2
-  exit 1
-fi
-if [ -z "${DATABASE_URL:-}" ]; then
+if [ -z "${DATABASE_URL:-}" ] && [ ! -f "${SQLITE_DB_PATH:-query_execute.db}" ]; then
   DB_PATH="${SQLITE_DB_PATH:-query_execute.db}"
-  if [ ! -f "$DB_PATH" ]; then
-    SQLITE_DB_PATH="$DB_PATH" .venv/bin/python scripts/init_sqlite_db.py
-  fi
+  SQLITE_DB_PATH="$DB_PATH" .venv/bin/python scripts/init_sqlite_db.py
 fi
 exec .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8282

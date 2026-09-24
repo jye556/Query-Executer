@@ -20,9 +20,8 @@ Get-Content '.env' | ForEach-Object {
 if (-not $env:BOOTSTRAP_ADMIN_PASSWORD -or $env:BOOTSTRAP_ADMIN_PASSWORD -eq 'CHANGE-ME-before-first-login') {
     throw 'Set a unique BOOTSTRAP_ADMIN_PASSWORD in .env before starting Query Execute.'
 }
-$sqlitePath = if ($env:SQLITE_DB_PATH) { $env:SQLITE_DB_PATH } else { 'query_execute.db' }
-if (-not $env:DATABASE_URL -and (Test-Path $sqlitePath)) {
-    throw 'Refusing to reuse an existing SQLite DB during first-run installation; configure DATABASE_URL or back it up and move it deliberately.'
+if (-not $env:DATABASE_URL) {
+    $sqlitePath = if ($env:SQLITE_DB_PATH) { $env:SQLITE_DB_PATH } else { 'query_execute.db' }
+    if (-not (Test-Path $sqlitePath)) { & $venvPython 'scripts/init_sqlite_db.py' }
 }
-if (-not $env:DATABASE_URL) { & $venvPython 'scripts/init_sqlite_db.py' }
 & $venvPython -m uvicorn app.main:app --host 127.0.0.1 --port 8282

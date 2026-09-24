@@ -26,66 +26,105 @@ Do not expose the app directly to the public internet over plain HTTP. For remot
 ### Download and install
 
 1. Install Python from [python.org](https://www.python.org/downloads/windows/). During setup, enable **Add Python to PATH**.
-2. Open Command Prompt and check Python:
+2. In Command Prompt, check Python and Git:
 
    ```bat
    python --version
+   git --version
    ```
 
-   It must report version 3.11 or newer. If `python` is not recognized, finish Python installation, enable PATH, and open a new terminal.
-3. Download the ZIP from the [Query Execute GitHub page](https://github.com/jye556/Query-Executer) using **Code → Download ZIP**. Extract it to a permanent folder, for example `C:\Query-Execute`. Do not run the app from inside the ZIP.
-4. In File Explorer, open the extracted folder. Double-click `install_windows.bat`.
-   - Or open PowerShell in that folder and run `./install_windows.ps1`.
-   - If PowerShell blocks the script, run `Set-ExecutionPolicy -Scope Process Bypass` in that terminal, then run `./install_windows.ps1` again.
-5. On first run, the installer creates a private `.env` configuration file and opens it for editing. Replace the password placeholder with a strong, unique password, save, and close the editor. If setup stops after creating the file, run `install_windows.bat` or `./install_windows.ps1` again.
-6. The installer creates a virtual environment, installs required packages, prepares an empty local app database if one does not already exist, and starts the web server. Keep the terminal window open while using the app.
+   Python must be 3.11 or newer. If Git is not installed, install it from [git-scm.com](https://git-scm.com/download/win).
+3. Open Command Prompt and move to the folder where you want to install Query Execute, for example:
+
+   ```bat
+   cd /d C:\
+   ```
+
+4. Clone the public repository with Git:
+
+   ```bat
+   git clone https://github.com/jye556/Query-Executer.git
+   cd Query-Executer
+   ```
+
+   Alternatively, download the ZIP from the [GitHub repository](https://github.com/jye556/Query-Executer) and extract it to a permanent folder.
+5. Start the installer from inside the project folder. For Command Prompt:
+
+   ```bat
+   install_windows.bat
+   ```
+
+   For PowerShell, open PowerShell in the project folder and run `./install_windows.ps1`. If PowerShell blocks it, run `Set-ExecutionPolicy -Scope Process Bypass`, then run `./install_windows.ps1` again.
+6. On first run, the installer creates `.env` and opens it in Notepad. Replace `CHANGE-ME-before-first-login` with a strong, unique password, save the file, and close Notepad. If the installer has stopped, start it again:
+
+   ```bat
+   install_windows.bat
+   ```
+
+7. The installer creates a virtual environment, installs required packages, creates an empty local app database if one does not already exist, and starts the server. Leave this terminal open while using Query Execute.
 
 ### Sign in
 
 Open <http://localhost:8282> in a browser. Sign in with username `admin` and the password you set in `.env`. There is no shared `admin/admin` password.
 
-To stop the server, close the installer/server terminal or press `Ctrl+C`. To start it later, run the same Windows installer/launcher again from the application folder. The local database and `.env` are kept in that folder and should not be deleted.
+### Start it later or stop it
+
+To stop Query Execute, press `Ctrl+C` in the server terminal. To start it later, open Command Prompt in the project folder and run `install_windows.bat` again. The app’s database and `.env` stay in this folder; do not delete them if you want to keep your users and saved connections.
 
 ## 3. Install directly on Linux
 
 ### Requirements
 
-- A Linux distribution with Python 3.11 or newer and the `venv` support package.
-- Internet access during setup so Python packages can be downloaded.
+- Linux distribution with Python 3.11 or newer, Git, and Python virtual-environment (`venv`) support.
+- Internet access during setup so Git and Python packages can be downloaded.
 
-Check Python:
+Check Python and Git:
 
 ```bash
 python3 --version
+git --version
 ```
 
-Install Python 3.11+ and your distribution’s Python virtual-environment package if needed. For example, Debian/Ubuntu systems may need `python3-venv` in addition to Python.
+Install Python 3.11+, Git, and your distribution’s Python venv package if needed. For example, Debian/Ubuntu may need `python3`, `python3-venv`, and `git` packages.
 
-### Download and install
+### Clone, install, and start (Bash)
 
-Choose either method:
-
-- Download the ZIP from the [Query Execute GitHub page](https://github.com/jye556/Query-Executer) and extract it, or
-- Clone the repository with Git:
-
-  ```bash
-  git clone https://github.com/jye556/Query-Executer.git
-  cd Query-Executer
-  ```
-
-Open a terminal in the extracted application folder. If the installer file is not executable, running it through Bash works without changing file permissions:
+The following commands are for Debian/Ubuntu. Other Linux distributions should install equivalent packages for Git, Python 3.11 or newer, Python `venv`, and Nano.
 
 ```bash
+# Install prerequisites
+sudo apt update
+sudo apt install -y git python3 python3-venv nano
+
+# Confirm Python is version 3.11 or newer and Git is installed
+python3 --version
+git --version
+
+# Clone the app into your home directory
+cd "$HOME"
+git clone https://github.com/jye556/Query-Executer.git
+cd Query-Executer
+
+# Let the installer open .env in Nano the first time it runs
+export EDITOR=nano
 bash install_linux.sh
 ```
 
-The installer creates a virtual environment and installs required packages. If `.env` does not exist, it creates the file and stops. Open `.env` in a text editor, replace the password placeholder with a strong, unique password, save it, then rerun `bash install_linux.sh`. The installer prepares an empty local SQLite metadata database if one does not already exist.
+When Nano opens `.env`, replace `CHANGE-ME-before-first-login` with a strong, unique password. Save with **Ctrl+O**, press **Enter** to confirm, then exit with **Ctrl+X**. The installer creates a private `.venv`, installs the app’s packages, initializes an empty local SQLite metadata database (if none exists), and starts the web server. If the installer stopped after creating `.env`, run it again with `bash install_linux.sh`.
 
-Keep `.env` private. The installer sets restrictive file permissions for a newly created `.env` file. Existing database files are not overwritten. Keep the terminal open while using the app; press `Ctrl+C` to stop it. Run `bash install_linux.sh` again from the app folder to start it later.
+If `python3 --version` reports a version below 3.11, install Python 3.11 or newer and its matching `venv` package from your Linux distribution before running the installer. The script checks the Python version and will not start with an unsupported version.
 
-### Sign in
+### Sign in, stop, and restart
 
-Open <http://localhost:8282> in a browser. Sign in with username `admin` and the password you set in `.env`. There is no shared `admin/admin` password.
+Open <http://localhost:8282> and sign in with username `admin` and the password you set in `.env`. There is no shared `admin/admin` password. Keep the terminal open while using the app. Press **Ctrl+C** in that terminal to stop the server. To start it later:
+
+```bash
+cd "$HOME/Query-Executer"
+export EDITOR=nano
+bash install_linux.sh
+```
+
+Keep `.env` and `query_execute.db` in the project folder. Existing databases are not overwritten. Back up existing data before moving or replacing database files.
 
 ## 4. Install with Docker Compose
 
@@ -161,7 +200,8 @@ The QR code is generated locally; provisioning details are not sent to an extern
 
 The Settings page shows the installed version and release notes. When a newer GitHub release is detected, the app displays an update notice and a link to the release. The link does **not** automatically download, install, or restart the app. An administrator must follow the release instructions and update the server. Back up `.env` and app data before upgrading.
 
-Current release: **v1.0.1**. The release log is available at [GitHub releases](https://github.com/jye556/Query-Executer/releases).
+- Current release: **v1.0.1**. See [GitHub releases](https://github.com/jye556/Query-Executer/releases).
+- Docker Compose users can change `GITHUB_REPOSITORY` or `UPDATE_CHECK_URL` in `.env` if using a different release feed. Set `UPDATE_CHECK_URL` to an empty value to disable remote checks.
 
 ## 9. Back up, move, or remove an installation
 
