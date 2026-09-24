@@ -15,5 +15,6 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - run: python -m unittest discover -s tests -v
       - run: node --check app/static/js/app.js
+      - run: node tests/test_connection_edit_form.js
       - run: bash -n install_linux.sh
       - run: bash -n scripts/publish_github.sh
