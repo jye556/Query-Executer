@@ -34,7 +34,6 @@ function makeLogin(fetchImpl) {
     const assigned = [];
     const context = {
         document,
-        form: nodes.get("login-form"),
         submit: nodes.get("login-submit"),
         error: nodes.get("login-error"),
         totpGroup: nodes.get("login-totp-group"),
@@ -55,6 +54,7 @@ function makeLogin(fetchImpl) {
         return { ok: false, status: 401, async json() { return { detail: "Invalid authenticator code" }; } };
     });
     const submit = login.handlers["form:submit"];
+    assert.equal(typeof submit, "function", "login script must bind a submit handler to the form");
     const event = { preventDefault() {} };
 
     await submit(event);

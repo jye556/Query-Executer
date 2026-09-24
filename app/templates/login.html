@@ -64,6 +64,7 @@
             applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
         });
         applyTheme(localStorage.getItem('qe-theme') || 'dark');
+        const form = document.getElementById('login-form');
         const submit = document.getElementById('login-submit');
         const error = document.getElementById('login-error');
         const totpGroup = document.getElementById('login-totp-group');
