@@ -32,6 +32,7 @@
     --text-disabled: #64748b; /* Slate-500 */
     --border-color: rgba(255, 255, 255, 0.1);
     --border-focus: rgba(59, 130, 246, 0.3);
+    --grid-line-color: rgba(255, 255, 255, 0.08);
     
     /* Typography */
     --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -70,6 +71,7 @@
     --text-disabled: #94a3b8;
     --border-color: rgba(15, 23, 42, 0.14);
     --border-focus: rgba(37, 99, 235, 0.35);
+    --grid-line-color: rgba(15, 23, 42, 0.12);
     --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
     --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
     color-scheme: light;
@@ -1234,11 +1236,37 @@ body {
 .query-suggestions button:hover, .query-suggestions button:focus { background: var(--bg-card-hover); outline: none; }
 .editor-container { position: relative; }
 .result-edit-actions { display: flex; gap: 0.4rem; }
-.excel-grid { min-width: 100%; }
-.excel-grid th { position: sticky; top: 0; z-index: 2; }
+.excel-grid {
+    min-width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--grid-line-color);
+}
+.excel-grid th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    border-bottom: 2px solid var(--grid-line-color);
+    border-right: 1px solid var(--grid-line-color);
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    background-color: var(--bg-surface);
+}
+.excel-grid th:last-child { border-right: none; }
+.excel-grid td {
+    border-bottom: 1px solid var(--grid-line-color);
+    border-right: 1px solid var(--grid-line-color);
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+}
+.excel-grid td:last-child { border-right: none; }
 .excel-grid td[contenteditable="true"] { min-width: 100px; cursor: cell; }
 .excel-grid td[contenteditable="true"]:focus { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--bg-input-focus); }
 .excel-grid tbody tr:nth-child(even) { background: color-mix(in srgb, var(--bg-card) 82%, var(--accent) 18%); }
+.excel-grid tbody tr:last-child td { border-bottom: none; }
 
 /* Theme-aware surfaces */
 :root[data-theme="light"] body { background-image: linear-gradient(135deg, rgba(59, 130, 246, 0.05), transparent 55%); }
@@ -1383,14 +1411,21 @@ body {
 .multi-result-table {
     width: 100%;
     border-collapse: collapse;
+    border: 1px solid var(--grid-line-color);
 }
 
 .multi-result-table th,
 .multi-result-table td {
     padding: 0.625rem 0.875rem;
     text-align: left;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--grid-line-color);
+    border-right: 1px solid var(--grid-line-color);
     font-size: 0.8125rem;
+}
+
+.multi-result-table th:last-child,
+.multi-result-table td:last-child {
+    border-right: none;
 }
 
 .multi-result-table th {
@@ -1683,16 +1718,21 @@ body {
 
 .premium-table {
     width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-    background-color: var(--bg-input);
+    border-collapse: collapse;
+    border: 1px solid var(--grid-line-color);
 }
 
 .premium-table th,
 .premium-table td {
     padding: 0.75rem 1rem;
     text-align: left;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--grid-line-color);
+    border-right: 1px solid var(--grid-line-color);
+}
+
+.premium-table th:last-child,
+.premium-table td:last-child {
+    border-right: none;
 }
 
 .premium-table th {
@@ -1716,6 +1756,151 @@ body {
 
 .premium-table tr:last-child td {
     border-bottom: none;
+}
+
+/* Column type alignment classes */
+.excel-grid th.type-number,
+.excel-grid td.type-number,
+.multi-result-table th.type-number,
+.multi-result-table td.type-number,
+.premium-table th.type-number,
+.premium-table td.type-number {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.excel-grid th.type-integer,
+.excel-grid td.type-integer,
+.multi-result-table th.type-integer,
+.multi-result-table td.type-integer,
+.premium-table th.type-integer,
+.premium-table td.type-integer {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.excel-grid th.type-float,
+.excel-grid td.type-float,
+.multi-result-table th.type-float,
+.multi-result-table td.type-float,
+.premium-table th.type-float,
+.premium-table td.type-float {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.excel-grid th.type-boolean,
+.excel-grid td.type-boolean,
+.multi-result-table th.type-boolean,
+.multi-result-table td.type-boolean,
+.premium-table th.type-boolean,
+.premium-table td.type-boolean {
+    text-align: center;
+}
+.excel-grid th.type-date,
+.excel-grid td.type-date,
+.multi-result-table th.type-date,
+.multi-result-table td.type-date,
+.premium-table th.type-date,
+.premium-table td.type-date {
+    text-align: center;
+}
+.excel-grid th.type-text,
+.excel-grid td.type-text,
+.multi-result-table th.type-text,
+.multi-result-table td.type-text,
+.premium-table th.type-text,
+.premium-table td.type-text {
+    text-align: left;
+}
+
+/* Apply Confirmation Dialog */
+.apply-confirm-dialog {
+    border: none;
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-surface);
+    box-shadow: var(--shadow-xl);
+    padding: 0;
+    max-width: 700px;
+    width: 90%;
+}
+.apply-confirm-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+}
+.apply-confirm-content {
+    padding: 1.5rem;
+}
+.apply-confirm-content h2 {
+    margin-bottom: 0.75rem;
+    font-size: 1.25rem;
+}
+.apply-confirm-content p {
+    margin-bottom: 1rem;
+    color: var(--text-secondary);
+}
+.apply-confirm-sql {
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    max-height: 300px;
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.apply-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+}
+
+/* Export Dropdown */
+.export-dropdown {
+    position: relative;
+    display: inline-block;
+}
+.export-dropdown .dropdown-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.export-menu {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    margin-bottom: 0.5rem;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    min-width: 180px;
+    z-index: 50;
+    overflow: hidden;
+}
+.export-menu.hidden {
+    display: none;
+}
+.export-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.625rem 1rem;
+    text-align: left;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+.export-menu-item:hover {
+    background-color: var(--bg-card-hover);
+}
+.export-menu-item svg {
+    flex-shrink: 0;
 }
 
 /* Empty State */

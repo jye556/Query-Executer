@@ -1,10 +1,17 @@
 {
-  "version": "1.0.10",
+  "version": "1.0.11",
   "releases": [
     {
-      "version": "1.0.10",
+      "version": "1.0.11",
       "date": "2026-09-25",
       "notes": [
+        "Query Results grid lines visible in both light and dark themes.",
+        "Edit button to toggle edit mode for result grid.",
+        "Apply confirmation dialog showing SQL UPDATE statements before applying.",
+        "Column type detection and alignment (numbers right, text left, booleans center).",
+        "Fixed connection panel flicker on selection with efficient DOM updates.",
+        "Auto-refresh Query Results when connection selection changes.",
+        "Export dropdown with CSV, JSON, Excel, SQL INSERT, and Markdown formats.",
         "Multi-tab Query Results persist when switching tabs.",
         "Query Results horizontal scrolling for wide tables.",
         "SQL queries saved per tab and restored on refresh/logout.",

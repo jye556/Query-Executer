@@ -172,13 +172,42 @@ function renderTabPanelContent(tab) {
                     <span class="result-count" id="result-count-${tab.id}">0 rows</span>
                     <span class="execution-time" id="execution-time-${tab.id}">0 ms</span>
                     <div id="result-edit-actions-${tab.id}" class="result-edit-actions hidden">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-edit-mode-${tab.id}" data-tab-id="${tab.id}" title="Toggle edit mode">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            Edit
+                        </button>
                         <button type="button" class="btn btn-primary btn-sm" id="btn-apply-result-edits-${tab.id}" data-tab-id="${tab.id}">Apply</button>
                         <button type="button" class="btn btn-secondary btn-sm" id="btn-revert-result-edits-${tab.id}" data-tab-id="${tab.id}">Revert</button>
                     </div>
-                    <button class="btn btn-secondary btn-sm" id="btn-export-csv-${tab.id}" disabled>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Export CSV
-                    </button>
+                    <div class="export-dropdown">
+                        <button type="button" class="btn btn-secondary btn-sm dropdown-toggle" id="btn-export-${tab.id}" disabled aria-haspopup="true" aria-expanded="false">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                        <div class="export-menu hidden" id="export-menu-${tab.id}" role="menu">
+                            <button type="button" class="export-menu-item" data-format="csv" role="menuitem">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                CSV
+                            </button>
+                            <button type="button" class="export-menu-item" data-format="json" role="menuitem">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                JSON
+                            </button>
+                            <button type="button" class="export-menu-item" data-format="xlsx" role="menuitem">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                Excel (.xlsx)
+                            </button>
+                            <button type="button" class="export-menu-item" data-format="sql" role="menuitem">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                SQL INSERT
+                            </button>
+                            <button type="button" class="export-menu-item" data-format="markdown" role="menuitem">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                Markdown
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -275,13 +304,43 @@ function bindTabPanelEvents(tab) {
     
     // Apply edits
     tab.btnApplyEdits?.addEventListener("click", () => applyResultEdits(tab.id));
-    
+
     // Revert edits
     tab.btnRevertEdits?.addEventListener("click", () => revertResultEdits(tab.id));
-    
-    // Export CSV
+
+    // Export CSV (legacy)
     tab.btnExportCsv?.addEventListener("click", () => exportCsv(tab.id));
-    
+
+    // Edit mode toggle
+    const btnEditMode = document.getElementById(`btn-edit-mode-${tab.id}`);
+    btnEditMode?.addEventListener("click", () => toggleEditMode(tab.id));
+
+    // Export dropdown
+    const btnExport = document.getElementById(`btn-export-${tab.id}`);
+    const exportMenu = document.getElementById(`export-menu-${tab.id}`);
+    btnExport?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        exportMenu.classList.toggle("hidden");
+        btnExport.setAttribute("aria-expanded", !exportMenu.classList.contains("hidden"));
+    });
+
+    // Export menu items
+    exportMenu?.querySelectorAll(".export-menu-item").forEach(item => {
+        item.addEventListener("click", () => {
+            exportData(tab.id, item.dataset.format);
+            exportMenu.classList.add("hidden");
+            btnExport.setAttribute("aria-expanded", "false");
+        });
+    });
+
+    // Close export menu on outside click
+    document.addEventListener("click", (e) => {
+        if (!btnExport?.contains(e.target) && !exportMenu?.contains(e.target)) {
+            exportMenu?.classList.add("hidden");
+            btnExport?.setAttribute("aria-expanded", "false");
+        }
+    });
+
     // Suggestion clicks
     tab.suggestionsElement?.addEventListener("click", e => {
         const btn = e.target.closest("button[data-suggestion]");
@@ -502,12 +561,17 @@ function updateTabName(tab) {
 function syncConnectionSelectionToActiveTab() {
     const activeTab = getActiveTab();
     if (!activeTab) return;
-    
+
     // Update active tab's connection IDs from global selection
     activeTab.connectionIds = new Set(selectedConnectionIds);
-    
+
     // Update UI to show which connections are selected for this tab
     updateConnectionSelectionUI(activeTab);
+
+    // Auto-re-execute query when connection selection changes (single connection mode)
+    if (activeTab.connectionIds.size === 1 && activeTab.query && activeTab.query.trim()) {
+        debouncedExecuteQuery(activeTab.id);
+    }
 }
 
 function updateConnectionSelectionUI(tab) {
@@ -517,6 +581,51 @@ function updateConnectionSelectionUI(tab) {
         tab.connectionIds = new Set(selectedConnectionIds);
         // Trigger schema metadata loading for selected connections
         selectedConnectionIds.forEach(connId => ensureSchemaMetadata(connId));
+    }
+}
+
+// Debounced execute to avoid excessive API calls
+let debounceTimer = null;
+function debouncedExecuteQuery(tabId) {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+        const tab = getTabById(tabId);
+        if (tab && tab.query && tab.query.trim()) {
+            executeQuery(tabId);
+        }
+    }, 300);
+}
+
+// Toggle edit mode for result grid
+function toggleEditMode(tabId) {
+    const tab = getTabById(tabId);
+    if (!tab || !tab.resultsContainer) return;
+
+    const isEditMode = tab.resultsContainer.classList.toggle("edit-mode");
+    const btnEditMode = document.getElementById(`btn-edit-mode-${tabId}`);
+
+    if (isEditMode) {
+        // Enable edit mode - make editable cells contenteditable
+        tab.resultsContainer.querySelectorAll("td.type-text, td.type-number, td.type-integer, td.type-float, td.type-boolean, td.type-date").forEach(cell => {
+            if (!cell.hasAttribute("data-key")) {
+                cell.setAttribute("contenteditable", "true");
+            }
+        });
+        if (btnEditMode) {
+            btnEditMode.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> View`;
+            btnEditMode.classList.add("btn-primary");
+            btnEditMode.classList.remove("btn-secondary");
+        }
+    } else {
+        // Disable edit mode - remove contenteditable
+        tab.resultsContainer.querySelectorAll("td[contenteditable='true']").forEach(cell => {
+            cell.removeAttribute("contenteditable");
+        });
+        if (btnEditMode) {
+            btnEditMode.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit`;
+            btnEditMode.classList.add("btn-secondary");
+            btnEditMode.classList.remove("btn-primary");
+        }
     }
 }
 
@@ -703,6 +812,17 @@ function setupEventListeners() {
     connDbTypeSelect?.addEventListener("change", () => applyDatabaseDefaults(connDbTypeSelect.value));
     btnNewQueryTab?.addEventListener("click", addQueryTab);
     document.getElementById("btn-logout")?.setAttribute("aria-label", "Log out of Query Execute");
+
+    // Apply confirmation dialog handlers
+    document.getElementById("btn-apply-confirm")?.addEventListener("click", () => {
+        const dialog = document.getElementById("apply-confirm-dialog");
+        const tabId = dialog.dataset.tabId;
+        dialog.close();
+        if (tabId) confirmApplyEdits(tabId);
+    });
+    document.getElementById("btn-apply-cancel")?.addEventListener("click", () => {
+        document.getElementById("apply-confirm-dialog").close();
+    });
     document.getElementById("btn-add-user")?.addEventListener("click", () => showUserForm());
     document.getElementById("btn-cancel-user")?.addEventListener("click", () => document.getElementById("admin-user-form").classList.add("hidden"));
     document.getElementById("admin-user-form")?.addEventListener("submit", saveUserForm);
@@ -975,7 +1095,6 @@ function visibleConnections() {
 }
 async function renderQueryConnectionPanel() {
     if (!connectionsPanelList) return;
-    connectionsPanelList.innerHTML = "";
     const items = visibleConnections();
     selectedConnectionIds.forEach(id => { if (!connections.some(connection => connection.id === id)) selectedConnectionIds.delete(id); });
     if (!items.length) { connectionsPanelList.innerHTML = '<p class="panel-empty">No authorized connections match these filters.</p>'; return; }
@@ -984,16 +1103,50 @@ async function renderQueryConnectionPanel() {
         await ensureSchemaMetadata(items[0].id);
     }
     if (selectedConnectionIds.size === 1) await ensureSchemaMetadata(Array.from(selectedConnectionIds)[0]);
+
+    // Efficient DOM update - only rebuild if necessary
+    const currentItems = connectionsPanelList.querySelectorAll(".connection-panel-item");
+    if (currentItems.length !== items.length) {
+        // Length changed, do full rebuild
+        connectionsPanelList.innerHTML = "";
+    }
+
+    // Create a map of existing items by connection id for potential reuse
+    const existingItemsMap = new Map();
+    connectionsPanelList.querySelectorAll(".connection-panel-item").forEach(el => {
+        const connId = el.dataset.connectionId;
+        if (connId) existingItemsMap.set(connId, el);
+    });
+
     items.forEach(connection => {
-        const item = document.createElement("button"); item.type = "button"; item.className = `connection-panel-item${selectedConnectionIds.has(connection.id) ? " selected" : ""}`;
-        item.innerHTML = `<span class="connection-panel-info"><span class="connection-panel-name">${escapeHtml(connection.name)}</span></span><span class="connection-panel-check">${selectedConnectionIds.has(connection.id) ? "✓" : ""}</span>`;
-        item.addEventListener("click", () => {
+        let item = existingItemsMap.get(connection.id);
+        if (!item) {
+            item = document.createElement("button");
+            item.type = "button";
+            item.dataset.connectionId = connection.id;
+            connectionsPanelList.appendChild(item);
+        }
+        const isSelected = selectedConnectionIds.has(connection.id);
+        item.className = `connection-panel-item${isSelected ? " selected" : ""}`;
+        item.innerHTML = `<span class="connection-panel-info"><span class="connection-panel-name">${escapeHtml(connection.name)}</span></span><span class="connection-panel-check">${isSelected ? "✓" : ""}</span>`;
+
+        // Remove old click listener by cloning
+        const newItem = item.cloneNode(true);
+        item.parentNode.replaceChild(newItem, item);
+        newItem.addEventListener("click", () => {
             selectedConnectionIds.has(connection.id) ? selectedConnectionIds.delete(connection.id) : selectedConnectionIds.add(connection.id);
             renderQueryConnectionPanel();
             syncConnectionSelectionToActiveTab();
         });
-        connectionsPanelList.appendChild(item);
     });
+
+    // Remove items no longer in the filtered list
+    existingItemsMap.forEach((el, connId) => {
+        if (!items.some(c => c.id === connId)) {
+            el.remove();
+        }
+    });
+
     syncConnectionSelectionToActiveTab();
 }
 function renderConnectionsList() {
@@ -1259,6 +1412,67 @@ function renderMultiResults(tab, results) {
     tab.executionTime.textContent = `${results.reduce((sum, r) => sum + (r.data?.execution_time_ms || 0), 0)} ms`;
 }
 
+// Detect column type from sample values
+function detectColumnType(columnName, sampleValues) {
+    if (!sampleValues || sampleValues.length === 0) return "text";
+
+    let numberCount = 0;
+    let integerCount = 0;
+    let floatCount = 0;
+    let booleanCount = 0;
+    let dateCount = 0;
+    let textCount = 0;
+
+    for (const val of sampleValues) {
+        if (val === null || val === undefined || val === "") {
+            continue;
+        }
+        const str = String(val).trim();
+
+        // Check for boolean
+        if (/^(true|false|1|0|yes|no|on|off)$/i.test(str)) {
+            booleanCount++;
+            continue;
+        }
+
+        // Check for integer
+        if (/^-?\d+$/.test(str)) {
+            integerCount++;
+            numberCount++;
+            continue;
+        }
+
+        // Check for float
+        if (/^-?\d*\.\d+$/.test(str)) {
+            floatCount++;
+            numberCount++;
+            continue;
+        }
+
+        // Check for date (ISO format or common formats)
+        if (/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?/.test(str) ||
+            /^\d{2}\/\d{2}\/\d{4}/.test(str) ||
+            /^\d{2}-\d{2}-\d{4}/.test(str)) {
+            dateCount++;
+            continue;
+        }
+
+        textCount++;
+    }
+
+    const total = sampleValues.filter(v => v !== null && v !== undefined && v !== "").length;
+    if (total === 0) return "text";
+
+    // Determine predominant type (need > 50% for a type)
+    if (integerCount / total > 0.5) return "integer";
+    if (floatCount / total > 0.5) return "float";
+    if (numberCount / total > 0.5) return "number";
+    if (booleanCount / total > 0.5) return "boolean";
+    if (dateCount / total > 0.5) return "date";
+
+    return "text";
+}
+
 function buildEditableGrid(data, tabId) {
     // Handle both full result object (has data.columns, data.data) and direct result
     const result = data?.data ? data : { data: data };
@@ -1270,7 +1484,7 @@ function buildEditableGrid(data, tabId) {
     const rowCount = rows.length;
 
     if (rowCount === 0) return { html: "<p>No rows returned</p>", editContext: null, rowCount: 0, columns, rows };
-    
+
     // Determine if editable (single connection, simple SELECT with PK)
     const activeTab = getTabById(tabId);
     const isEditable = activeTab?.connectionIds.size === 1 &&
@@ -1286,12 +1500,23 @@ function buildEditableGrid(data, tabId) {
             columns: columns
         };
     }
-    
+
+    // Detect column types from first 10 rows
+    const sampleRows = rows.slice(0, 10);
+    const columnTypes = {};
+    columns.forEach(col => {
+        const sampleValues = sampleRows.map(r => r[col]);
+        columnTypes[col] = detectColumnType(col, sampleValues);
+    });
+
     // Build table HTML
     let html = `<table class="excel-grid"><thead><tr>`;
-    columns.forEach(col => { html += `<th>${escapeHtml(col)}</th>`; });
+    columns.forEach(col => {
+        const typeClass = columnTypes[col] ? ` class="type-${columnTypes[col]}"` : "";
+        html += `<th${typeClass}>${escapeHtml(col)}</th>`;
+    });
     html += `</tr></thead><tbody>`;
-    
+
     rows.forEach((row, rowIdx) => {
         html += `<tr>`;
         columns.forEach((col, colIdx) => {
@@ -1299,12 +1524,13 @@ function buildEditableGrid(data, tabId) {
             const displayValue = value === null ? '<span class="null-value">NULL</span>' : escapeHtml(String(value));
             const editable = isEditable && col !== editContext?.key_column ? ' contenteditable="true"' : "";
             const keyAttr = col === editContext?.key_column ? ` data-key="${escapeHtml(String(value))}"` : "";
-            html += `<td${editable}${keyAttr}>${displayValue}</td>`;
+            const typeClass = columnTypes[col] ? ` class="type-${columnTypes[col]}"` : "";
+            html += `<td${typeClass}${editable}${keyAttr}>${displayValue}</td>`;
         });
         html += `</tr>`;
     });
     html += `</tbody></table>`;
-    
+
     return { html, editContext, rowCount, columns, rows };
 }
 
@@ -1330,14 +1556,69 @@ function handleCellEdit(tab, event) {
     }
 }
 
-async function applyResultEdits(tabId) {
+// Generate SQL UPDATE statements for confirmation dialog
+function generateUpdateSQL(tab, edits) {
+    const context = tab.currentEditContext;
+    if (!context) return "";
+
+    const { table, key_column } = context;
+    const keyValue = edits[0].keyValue;
+
+    // Group edits by key value (each row)
+    const editsByRow = new Map();
+    edits.forEach(edit => {
+        if (!editsByRow.has(edit.keyValue)) {
+            editsByRow.set(edit.keyValue, []);
+        }
+        editsByRow.get(edit.keyValue).push(edit);
+    });
+
+    const statements = [];
+    editsByRow.forEach((rowEdits, rowKeyValue) => {
+        const setClause = rowEdits.map(e => {
+            const val = e.newValue;
+            if (val === null) return `${e.column} = NULL`;
+            const str = String(val);
+            if (/^(true|false|null)$/i.test(str) || /^-?\d+(\.\d+)?$/.test(str)) {
+                return `${e.column} = ${str}`;
+            }
+            return `${e.column} = '${str.replace(/'/g, "''")}'`;
+        }).join(", ");
+
+        const keyVal = rowKeyValue;
+        const keyStr = /^(true|false|null)$/i.test(String(keyVal)) || /^-?\d+(\.\d+)?$/.test(String(keyVal))
+            ? String(keyVal)
+            : `'${String(keyVal).replace(/'/g, "''")}'`;
+
+        statements.push(`UPDATE ${table} SET ${setClause} WHERE ${key_column} = ${keyStr};`);
+    });
+
+    return statements.join("\n\n");
+}
+
+function showApplyConfirmation(tab) {
+    const edits = Array.from(tab.pendingEdits.values());
+    if (edits.length === 0) return;
+
+    const sql = generateUpdateSQL(tab, edits);
+    const dialog = document.getElementById("apply-confirm-dialog");
+    const sqlElement = document.getElementById("apply-confirm-sql");
+
+    sqlElement.textContent = sql;
+    dialog.showModal();
+
+    // Store reference for confirm handler
+    dialog.dataset.tabId = tab.id;
+}
+
+async function confirmApplyEdits(tabId) {
     const tab = getTabById(tabId);
     if (!tab || tab.pendingEdits.size === 0) return;
-    
+
     const edits = Array.from(tab.pendingEdits.values());
     const firstEdit = edits[0];
     if (!firstEdit.keyValue) return showToast("Cannot identify rows to update (missing key column)", "error");
-    
+
     try {
         const result = await apiFetch("/api/query/edits", {
             method: "POST",
@@ -1356,6 +1637,14 @@ async function applyResultEdits(tabId) {
     } catch (error) {
         showToast(`Apply failed: ${error.message}`, "error");
     }
+}
+
+async function applyResultEdits(tabId) {
+    const tab = getTabById(tabId);
+    if (!tab || tab.pendingEdits.size === 0) return;
+
+    // Show confirmation dialog instead of applying directly
+    showApplyConfirmation(tab);
 }
 
 function revertResultEdits(tabId) {
@@ -1384,6 +1673,126 @@ function exportCsv(tabId) {
     link.click();
     URL.revokeObjectURL(link.href);
     showToast("CSV exported", "success");
+}
+
+function exportJson(tabId) {
+    const tab = getTabById(tabId);
+    if (!tab || !tab.currentExportData) return;
+
+    const { columns, rows } = tab.currentExportData;
+    const json = rows.map(row => {
+        const obj = {};
+        columns.forEach(col => { obj[col] = row[col]; });
+        return obj;
+    });
+    const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `query-results-${Date.now()}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    showToast("JSON exported", "success");
+}
+
+function exportMarkdown(tabId) {
+    const tab = getTabById(tabId);
+    if (!tab || !tab.currentExportData) return;
+
+    const { columns, rows } = tab.currentExportData;
+    const header = `| ${columns.join(" | ")} |`;
+    const separator = `| ${columns.map(() => "---").join(" | ")} |`;
+    const dataRows = rows.map(row => `| ${columns.map(col => {
+        const value = row[col];
+        return value === null ? "" : String(value).replace(/\|/g, "\\|");
+    }).join(" | ")} |`);
+    const markdown = [header, separator, ...dataRows].join("\n");
+
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `query-results-${Date.now()}.md`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    showToast("Markdown exported", "success");
+}
+
+function exportSqlInsert(tabId) {
+    const tab = getTabById(tabId);
+    if (!tab || !tab.currentExportData) return;
+
+    const { columns, rows } = tab.currentExportData;
+    const tableName = tab.currentEditContext?.table || "table_name";
+
+    const statements = rows.map(row => {
+        const values = columns.map(col => {
+            const value = row[col];
+            if (value === null) return "NULL";
+            const str = String(value);
+            if (/^(true|false|null)$/i.test(str) || /^-?\d+(\.\d+)?$/.test(str)) return str;
+            return `'${str.replace(/'/g, "''")}'`;
+        });
+        return `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${values.join(", ")});`;
+    });
+
+    const sql = statements.join("\n");
+    const blob = new Blob([sql], { type: "text/sql;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `query-results-${Date.now()}.sql`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    showToast("SQL INSERT exported", "success");
+}
+
+async function exportExcel(tabId) {
+    const tab = getTabById(tabId);
+    if (!tab || !tab.currentExportData) return;
+
+    // Load SheetJS from CDN
+    if (typeof XLSX === "undefined") {
+        try {
+            await loadSheetJS();
+        } catch (error) {
+            showToast("Failed to load Excel library", "error");
+            return;
+        }
+    }
+
+    const { columns, rows } = tab.currentExportData;
+    const worksheetData = [columns, ...rows.map(row => columns.map(col => row[col]))];
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Results");
+    const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([excelBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `query-results-${Date.now()}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    showToast("Excel exported", "success");
+}
+
+function loadSheetJS() {
+    return new Promise((resolve, reject) => {
+        if (typeof XLSX !== "undefined") return resolve();
+        const script = document.createElement("script");
+        script.src = "https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js";
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
+}
+
+function exportData(tabId, format) {
+    switch (format) {
+        case "csv": exportCsv(tabId); break;
+        case "json": exportJson(tabId); break;
+        case "xlsx": exportExcel(tabId); break;
+        case "sql": exportSqlInsert(tabId); break;
+        case "markdown": exportMarkdown(tabId); break;
+        default: showToast(`Unknown export format: ${format}`, "error");
+    }
 }
 
 async function ensureSchemaMetadata(connectionId) {
