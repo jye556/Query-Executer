@@ -357,7 +357,7 @@ function setupEventListeners() {
     connDbTypeSelect?.addEventListener("change", () => applyDatabaseDefaults(connDbTypeSelect.value));
     btnExecuteQuery?.addEventListener("click", executeQuery);
     queryEditor?.addEventListener("keydown", event => {
-        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); executeQuery(); }
+        if ((event.ctrlKey || event.metaKey) && (event.key === "Enter" || event.key.toLowerCase() === "e")) { event.preventDefault(); executeQuery(); }
         if (event.key === "Escape") hideQuerySuggestions();
         if (event.key === "Tab" && !event.shiftKey && !document.getElementById("query-suggestions")?.classList.contains("hidden")) {
             const option = document.querySelector("#query-suggestions [data-suggestion]");

@@ -1,6 +1,14 @@
 {
-  "version": "1.0.5",
+  "version": "1.0.6",
   "releases": [
+    {
+      "version": "1.0.6",
+      "date": "2026-09-25",
+      "notes": [
+        "Add Ctrl+E shortcut to execute SQL queries in editor.",
+        "Support both Ctrl+Enter and Ctrl+E for query execution."
+      ]
+    },
     {
       "version": "1.0.5",
       "date": "2026-09-25",
