@@ -1282,25 +1282,33 @@ function useConnection(id) { selectedConnectionIds.add(id); switchView("query-se
 async function executeQuery(tabId) {
     const tab = getTabById(tabId);
     if (!tab) return;
-    
-    const sql = tab.editorElement.value.trim();
+
+    // Ensure UI elements are bound (defensive)
+    if (!tab.executeBtn || !tab.executeText || !tab.executeSpinner || !tab.resultsContainer) {
+        bindTabPanelEvents(tab);
+    }
+
+    const sql = tab.editorElement?.value?.trim() || "";
     if (!sql) return showToast("Enter a SQL query first", "warning");
     if (tab.connectionIds.size === 0) return showToast("Select at least one connection", "warning");
-    
-    tab.executeBtn.disabled = true;
-    tab.executeText.textContent = "Executing...";
-    tab.executeSpinner.classList.remove("hidden");
-    tab.resultsPlaceholder.classList.add("hidden");
-    tab.multiResultsContainer.classList.add("hidden");
-    tab.multiResultsContainer.innerHTML = "";
-    tab.errorContainer.classList.add("hidden");
-    tab.editActions.classList.add("hidden");
-    tab.btnExportCsv.disabled = true;
-    
+
+    // Reset UI state
+    if (tab.executeBtn) tab.executeBtn.disabled = true;
+    if (tab.executeText) tab.executeText.textContent = "Executing...";
+    if (tab.executeSpinner) tab.executeSpinner.classList.remove("hidden");
+    if (tab.resultsPlaceholder) tab.resultsPlaceholder.classList.add("hidden");
+    if (tab.multiResultsContainer) {
+        tab.multiResultsContainer.classList.add("hidden");
+        tab.multiResultsContainer.innerHTML = "";
+    }
+    if (tab.errorContainer) tab.errorContainer.classList.add("hidden");
+    if (tab.editActions) tab.editActions.classList.add("hidden");
+    if (tab.btnExportCsv) tab.btnExportCsv.disabled = true;
+
     const limit = parseInt(queryLimitInput?.value) || 1000;
     const connIds = Array.from(tab.connectionIds);
     const isMulti = connIds.length > 1;
-    
+
     try {
         if (isMulti) {
             // Multi-connection execution
@@ -1329,16 +1337,26 @@ async function executeQuery(tabId) {
             renderSingleResult(tab, connId, result);
         }
     } catch (error) {
-        tab.resultsPlaceholder.classList.add("hidden");
-        tab.errorContainer.classList.remove("hidden");
-        tab.errorMessage.textContent = error.message;
-        tab.resultCount.textContent = "0 rows";
-        tab.executionTime.textContent = "0 ms";
-        showToast(`Query failed: ${error.message}`, "error");
+        try {
+            if (tab.resultsPlaceholder) tab.resultsPlaceholder.classList.add("hidden");
+            if (tab.errorContainer) tab.errorContainer.classList.remove("hidden");
+            if (tab.errorMessage) tab.errorMessage.textContent = error.message;
+            if (tab.resultCount) tab.resultCount.textContent = "0 rows";
+            if (tab.executionTime) tab.executionTime.textContent = "0 ms";
+            showToast(`Query failed: ${error.message}`, "error");
+        } catch (e) {
+            // Ignore UI update errors in error handler
+            console.error("Error in query error handler:", e);
+        }
     } finally {
-        tab.executeBtn.disabled = false;
-        tab.executeText.textContent = "Execute";
-        tab.executeSpinner.classList.add("hidden");
+        try {
+            if (tab.executeBtn) tab.executeBtn.disabled = false;
+            if (tab.executeText) tab.executeText.textContent = "Execute";
+            if (tab.executeSpinner) tab.executeSpinner.classList.add("hidden");
+        } catch (e) {
+            // Ensure button resets even if UI elements are missing
+            console.error("Error resetting execute button:", e);
+        }
     }
 }
 

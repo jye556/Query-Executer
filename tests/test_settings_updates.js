@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const CURRENT_VERSION = "1.0.11";
+const CURRENT_VERSION = "1.0.12";
 
 const root = path.join(__dirname, "..");
 const template = fs.readFileSync(path.join(root, "app/templates/index.html"), "utf8");
@@ -54,7 +54,7 @@ assert.equal(new Set(releases.releases.map(release => release.version)).size, re
         escapeHtml: value => value,
         fetch: async url => ({
             ok: true,
-            async json() { return { version: "1.0.11", latest_version: "1.0.12", update_available: true, release_url: "https://example.test/release/v1.0.12", changelog: [] }; },
+            async json() { return { version: "1.0.12", latest_version: "1.0.13", update_available: true, release_url: "https://example.test/release/v1.0.13", changelog: [] }; },
         }),
     };
     const updateStart = script.indexOf("async function fetchVersionData()");
@@ -63,8 +63,8 @@ assert.equal(new Set(releases.releases.map(release => release.version)).size, re
     assert.notEqual(updateEnd, -1);
     await require("node:vm").runInNewContext(`${script.slice(updateStart, updateEnd)}\ncheckForUpdates()`, context);
     assert.equal(elements.get("app-version-pill").textContent, `v${CURRENT_VERSION}`);
-    assert.equal(elements.get("version-update-message").textContent, "Version v1.0.12 is available.");
-    assert.equal(elements.get("version-update-link").href, "https://example.test/release/v1.0.12");
+    assert.equal(elements.get("version-update-message").textContent, "Version v1.0.13 is available.");
+    assert.equal(elements.get("version-update-link").href, "https://example.test/release/v1.0.13");
     assert.ok(statements.some(([, action, , hidden]) => action === "toggle" && hidden === false));
     console.log("2FA pages, header update/version display, and availability flow verified");
 })().catch(error => { console.error(error); process.exitCode = 1; });
