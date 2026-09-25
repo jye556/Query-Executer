@@ -1136,7 +1136,7 @@ function renderSingleResult(tab, connId, result) {
     tab.errorContainer.classList.add("hidden");
     
     // Build editable grid
-    const { html, editContext, rowCount, columns, rows } = buildEditableGrid(result.data || result, tab.id);
+    const { html, editContext, rowCount, columns, rows } = buildEditableGrid(result, tab.id);
     tab.currentEditContext = editContext;
     tab.currentResultData = { columns, rows };
     tab.resultCount.textContent = `${rowCount} row${rowCount !== 1 ? "s" : ""}`;
@@ -1186,26 +1186,30 @@ function renderMultiResults(tab, results) {
 }
 
 function buildEditableGrid(data, tabId) {
-    if (!data?.columns || !data?.rows) return { html: "<p>No data returned</p>", editContext: null, rowCount: 0, columns: [], rows: [] };
-    
-    const { columns, rows } = data;
+    // Handle both full result object (has data.columns, data.data) and direct result
+    const result = data?.data ? data : { data: data };
+    const columns = result.data?.columns || result.columns;
+    const rows = result.data?.data || result.rows || result.data || [];
+
+    if (!columns || !rows) return { html: "<p>No data returned</p>", editContext: null, rowCount: 0, columns: [], rows: [] };
+
     const rowCount = rows.length;
-    
+
     if (rowCount === 0) return { html: "<p>No rows returned</p>", editContext: null, rowCount: 0, columns, rows };
     
     // Determine if editable (single connection, simple SELECT with PK)
     const activeTab = getTabById(tabId);
-    const isEditable = activeTab?.connectionIds.size === 1 && 
-                       data.edit_context && 
+    const isEditable = activeTab?.connectionIds.size === 1 &&
+                       result.edit_context &&
                        (currentUser?.role === "admin" || currentUser?.role === "writer");
-    
+
     let editContext = null;
-    if (isEditable && data.edit_context) {
+    if (isEditable && result.edit_context) {
         editContext = {
-            connection_id: data.edit_context.connection_id,
-            table: data.edit_context.table,
-            key_column: data.edit_context.key_column,
-            columns: data.columns
+            connection_id: result.edit_context.connection_id,
+            table: result.edit_context.table,
+            key_column: result.edit_context.key_column,
+            columns: columns
         };
     }
     
