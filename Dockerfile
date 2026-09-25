@@ -3,9 +3,11 @@ FROM python:3.11-slim-bookworm
 # Install customer-database client libraries.  The Microsoft repository is
 # pinned to the Debian major version of the base image so pyodbc has a real
 # SQL Server driver at runtime rather than only the Python module.
+# Also install git for auto-update functionality.
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    git \
     gnupg \
     libfbclient2 \
     unixodbc \

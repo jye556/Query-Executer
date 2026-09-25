@@ -50,6 +50,7 @@ from app.auth import (
     digest_token,
     encryption_key_bytes,
     hash_password,
+    idle_timeout_seconds,
     new_session_tokens,
     needs_rehash,
     session_ttl_seconds,
@@ -608,10 +609,12 @@ def _session_user(request: Request) -> Optional[Dict[str, Any]]:
         cur = _cursor(conn, dict_rows=True)
         cur.execute(
             """SELECT s.id AS session_id, s.token_hash, s.csrf_token_hash, s.expires_at,
+                      s.last_activity_at,
                       u.id, u.username, u.role, u.is_active, u.created_at
                FROM sessions s JOIN users u ON u.id = s.user_id
                WHERE s.token_hash = %s AND s.revoked_at IS NULL""" if USE_POSTGRES else
             """SELECT s.id AS session_id, s.token_hash, s.csrf_token_hash, s.expires_at,
+                      s.last_activity_at,
                       u.id, u.username, u.role, u.is_active, u.created_at
                FROM sessions s JOIN users u ON u.id = s.user_id
                WHERE s.token_hash = ? AND s.revoked_at IS NULL""",
@@ -641,6 +644,42 @@ def _session_user(request: Request) -> Optional[Dict[str, Any]]:
             except Exception:
                 pass
             return None
+        
+        # Check idle timeout
+        last_activity = row.get("last_activity_at")
+        if isinstance(last_activity, str):
+            try:
+                last_activity = datetime.fromisoformat(last_activity.replace("Z", "+00:00")).replace(tzinfo=None)
+            except ValueError:
+                last_activity = None
+        if last_activity is not None:
+            idle_seconds = (_now_utc() - last_activity).total_seconds()
+            if idle_seconds > idle_timeout_seconds():
+                # Session idle too long - revoke it
+                try:
+                    cleanup = conn.cursor()
+                    cleanup.execute(
+                        "UPDATE sessions SET revoked_at = %s WHERE id = %s" if USE_POSTGRES else "UPDATE sessions SET revoked_at = ? WHERE id = ?",
+                        (_now_utc(), row["session_id"]),
+                    )
+                    conn.commit()
+                    cleanup.close()
+                except Exception:
+                    pass
+                return None
+        
+        # Update last_activity_at on each request
+        try:
+            update_cur = conn.cursor()
+            update_cur.execute(
+                "UPDATE sessions SET last_activity_at = %s WHERE id = %s" if USE_POSTGRES else "UPDATE sessions SET last_activity_at = ? WHERE id = ?",
+                (_now_utc(), row["session_id"]),
+            )
+            conn.commit()
+            update_cur.close()
+        except Exception:
+            pass
+        
         # Keep only authorization/session metadata in request state.  In
         # particular, never carry the password hash into a response DTO or
         # browser-facing object.
@@ -967,16 +1006,17 @@ async def login(payload: LoginRequest):
 
         session_token, csrf_token = new_session_tokens()
         expires_at = _now_utc() + timedelta(seconds=session_ttl_seconds())
+        now = _now_utc()
         cur = conn.cursor()
         if USE_POSTGRES:
             cur.execute(
-                "INSERT INTO sessions (token_hash, user_id, csrf_token_hash, expires_at) VALUES (%s, %s, %s, %s)",
-                (digest_token(session_token), row["id"], digest_token(csrf_token), expires_at),
+                "INSERT INTO sessions (token_hash, user_id, csrf_token_hash, expires_at, last_activity_at) VALUES (%s, %s, %s, %s, %s)",
+                (digest_token(session_token), row["id"], digest_token(csrf_token), expires_at, now),
             )
         else:
             cur.execute(
-                "INSERT INTO sessions (token_hash, user_id, csrf_token_hash, expires_at) VALUES (?, ?, ?, ?)",
-                (digest_token(session_token), row["id"], digest_token(csrf_token), expires_at.isoformat(sep=" ")),
+                "INSERT INTO sessions (token_hash, user_id, csrf_token_hash, expires_at, last_activity_at) VALUES (?, ?, ?, ?, ?)",
+                (digest_token(session_token), row["id"], digest_token(csrf_token), expires_at.isoformat(sep=" "), now.isoformat(sep=" ")),
             )
         conn.commit()
         cur.close()

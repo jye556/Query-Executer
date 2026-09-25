@@ -162,6 +162,7 @@ def _create_tables(cur: Any, postgres: bool) -> None:
             user_id BIGINT NOT NULL,
             csrf_token_hash VARCHAR(128) NOT NULL,
             expires_at TIMESTAMP NOT NULL,
+            last_activity_at TIMESTAMP NOT NULL,
             revoked_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''',
@@ -170,6 +171,7 @@ def _create_tables(cur: Any, postgres: bool) -> None:
             ("user_id", "BIGINT"),
             ("csrf_token_hash", "VARCHAR(128)"),
             ("expires_at", "TIMESTAMP"),
+            ("last_activity_at", "TIMESTAMP"),
             ("revoked_at", "TIMESTAMP"),
             ("created_at", "TIMESTAMP"),
         ),

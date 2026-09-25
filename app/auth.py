@@ -30,6 +30,15 @@ SESSION_COOKIE_NAME = "qe_session"
 CSRF_COOKIE_NAME = "qe_csrf"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 DEFAULT_SESSION_TTL_SECONDS = 24 * 60 * 60
+DEFAULT_IDLE_TIMEOUT_SECONDS = 15 * 60
+
+
+def idle_timeout_seconds() -> int:
+    try:
+        value = int(os.getenv("IDLE_TIMEOUT_SECONDS", str(DEFAULT_IDLE_TIMEOUT_SECONDS)))
+    except ValueError:
+        value = DEFAULT_IDLE_TIMEOUT_SECONDS
+    return max(60, min(value, 24 * 60 * 60))
 
 
 _password_hasher = None
