@@ -28,7 +28,7 @@ let btnShowAddConnection, addConnectionFormContainer, addConnectionForm,
     queryLimitInput, connGroupSelect, connNewGroupInput, queryGroupFilter, queryDbTypeFilter, queryDbSearch,
     connectionsGroupFilter, connectionsDbTypeFilter, connectionsSearchInput, connDbTypeSelect,
     btnExecuteQuery, executeText, executeSpinner,
-    resultsPlaceholder, tableScrollContainer, resultCount, executionTime,
+    resultsPlaceholder, tableScrollContainer, resultCount, executionTime, btnExportCsv,
     errorContainer, errorMessage, btnClearHistory, historyListContainer, toastContainer,
     sidebarToggle, sidebarClose, sidebar, appViews, sidebarLinks, connectionsPanelList,
     multiResultsContainer,
@@ -121,9 +121,9 @@ function renderTabPanels() {
             ${renderTabPanelContent(tab)}
         </div>
     `).join("");
-
-    // Re-bind events for the active panel - use setTimeout to ensure DOM is ready
-    setTimeout(() => bindTabPanelEvents(getActiveTab()), 0);
+    
+    // Re-bind events for the active panel
+    bindTabPanelEvents(getActiveTab());
 }
 
 function renderTabPanelContent(tab) {
@@ -238,10 +238,10 @@ function renderTabPanelContent(tab) {
 
 function bindTabPanelEvents(tab) {
     if (!tab) return;
-
+    
     const editor = document.getElementById(`query-editor-${tab.id}`);
     if (!editor) return;
-
+    
     // Store reference for easy access
     tab.editorElement = editor;
     tab.suggestionsElement = document.getElementById(`query-suggestions-${tab.id}`);
@@ -256,6 +256,7 @@ function bindTabPanelEvents(tab) {
     tab.errorMessage = document.getElementById(`error-message-${tab.id}`);
     tab.resultCount = document.getElementById(`result-count-${tab.id}`);
     tab.executionTime = document.getElementById(`execution-time-${tab.id}`);
+    tab.btnExportCsv = document.getElementById(`btn-export-csv-${tab.id}`);
     tab.btnApplyEdits = document.getElementById(`btn-apply-result-edits-${tab.id}`);
     tab.btnRevertEdits = document.getElementById(`btn-revert-result-edits-${tab.id}`);
     tab.editActions = document.getElementById(`result-edit-actions-${tab.id}`);
@@ -307,7 +308,9 @@ function bindTabPanelEvents(tab) {
     // Revert edits
     tab.btnRevertEdits?.addEventListener("click", () => revertResultEdits(tab.id));
 
-    
+    // Export CSV (legacy)
+    tab.btnExportCsv?.addEventListener("click", () => exportCsv(tab.id));
+
     // Edit mode toggle
     const btnEditMode = document.getElementById(`btn-edit-mode-${tab.id}`);
     btnEditMode?.addEventListener("click", () => toggleEditMode(tab.id));
@@ -566,9 +569,7 @@ function syncConnectionSelectionToActiveTab() {
     updateConnectionSelectionUI(activeTab);
 
     // Auto-re-execute query when connection selection changes (single connection mode)
-    // Only if there's already a result displayed (user has executed before)
-    if (activeTab.connectionIds.size === 1 && activeTab.query && activeTab.query.trim() &&
-        (activeTab.resultHtml || activeTab.multiResultHtml)) {
+    if (activeTab.connectionIds.size === 1 && activeTab.query && activeTab.query.trim()) {
         debouncedExecuteQuery(activeTab.id);
     }
 }
@@ -683,39 +684,8 @@ document.addEventListener("DOMContentLoaded", initialize);
 function setupSidebarVisibility() {
     if (!sidebar) return;
     sidebar.classList.toggle("hidden", window.innerWidth <= 768);
-    sidebarOverlay?.classList.remove("visible");
-
-    // Restore collapsed state from localStorage on desktop
-    if (window.innerWidth > 768) {
-        const isCollapsed = localStorage.getItem("qe-sidebar-collapsed") === "true";
-        sidebar.classList.toggle("collapsed", isCollapsed);
-
-        // Update header toggle button aria-expanded
-        const headerToggle = document.getElementById("sidebar-toggle");
-        if (headerToggle) {
-            headerToggle.setAttribute("aria-expanded", isCollapsed.toString());
-        }
-    }
 }
 window.addEventListener("resize", setupSidebarVisibility);
-
-function toggleSidebarCollapsed() {
-    if (!sidebar) return;
-    const isCollapsed = sidebar.classList.toggle("collapsed");
-    localStorage.setItem("qe-sidebar-collapsed", isCollapsed.toString());
-
-    // Update header toggle button aria-expanded
-    const headerToggle = document.getElementById("sidebar-toggle");
-    if (headerToggle) {
-        headerToggle.setAttribute("aria-expanded", isCollapsed.toString());
-    }
-
-    // Update sidebar toggle button aria-expanded
-    const sidebarToggleBtn = document.getElementById("sidebar-toggle-btn");
-    if (sidebarToggleBtn) {
-        sidebarToggleBtn.setAttribute("aria-expanded", isCollapsed.toString());
-    }
-}
 
 function setupEventListeners() {
     const confirmTotp = document.getElementById("btn-confirm-totp-setup");
@@ -811,44 +781,13 @@ function setupEventListeners() {
     });
     document.getElementById("btn-auto-update")?.addEventListener("click", autoUpdate);
     document.getElementById("btn-auto-update-banner")?.addEventListener("click", autoUpdate);
-    // Header sidebar toggle - collapses/expands sidebar on desktop, shows/hides on mobile
-    sidebarToggle?.addEventListener("click", () => {
-        if (window.innerWidth <= 768) {
-            const isHidden = sidebar.classList.toggle("hidden");
-            sidebarToggle.setAttribute("aria-expanded", (!isHidden).toString());
-            sidebarOverlay?.classList.toggle("visible", !isHidden);
-        } else {
-            toggleSidebarCollapsed();
-        }
-    });
-    sidebarClose?.addEventListener("click", () => {
-        sidebar.classList.add("hidden");
-        sidebarOverlay?.classList.remove("visible");
-        // Update header toggle button state on mobile
-        if (window.innerWidth <= 768 && sidebarToggle) {
-            sidebarToggle.setAttribute("aria-expanded", "false");
-        }
-    });
-    sidebarOverlay?.addEventListener("click", () => {
-        sidebar.classList.add("hidden");
-        sidebarOverlay.classList.remove("visible");
-        if (sidebarToggle) {
-            sidebarToggle.setAttribute("aria-expanded", "false");
-        }
-    });
+    sidebarToggle?.addEventListener("click", () => sidebar.classList.toggle("hidden"));
+    sidebarClose?.addEventListener("click", () => sidebar.classList.add("hidden"));
     sidebarLinks.forEach(link => link.addEventListener("click", event => {
         event.preventDefault();
         switchView(link.dataset.view);
         sidebarLinks.forEach(item => item.classList.remove("active"));
         link.classList.add("active");
-        // Close sidebar on mobile after selecting a view
-        if (window.innerWidth <= 768) {
-            sidebar.classList.add("hidden");
-            sidebarOverlay?.classList.remove("visible");
-            if (sidebarToggle) {
-                sidebarToggle.setAttribute("aria-expanded", "false");
-            }
-        }
     }));
     document.getElementById("btn-logout")?.addEventListener("click", logout);
     document.getElementById("btn-account-security")?.addEventListener("click", manageTotp);
@@ -873,20 +812,6 @@ function setupEventListeners() {
     connDbTypeSelect?.addEventListener("change", () => applyDatabaseDefaults(connDbTypeSelect.value));
     btnNewQueryTab?.addEventListener("click", addQueryTab);
     document.getElementById("btn-logout")?.setAttribute("aria-label", "Log out of Query Execute");
-    document.getElementById("sidebar-toggle-btn")?.addEventListener("click", () => {
-        toggleSidebarCollapsed();
-    });
-    document.getElementById("sidebar-toggle")?.addEventListener("click", () => {
-        if (!sidebar) return;
-        const isHidden = sidebar.classList.toggle("hidden");
-        sidebarOverlay?.classList.toggle("visible", !isHidden);
-        document.getElementById("sidebar-toggle")?.setAttribute("aria-expanded", (!isHidden).toString());
-    });
-    document.getElementById("sidebar-close")?.addEventListener("click", () => {
-        const sidebar = document.getElementById("sidebar");
-        sidebar?.classList.add("hidden");
-        sidebarOverlay?.classList.remove("visible");
-    });
 
     // Apply confirmation dialog handlers
     document.getElementById("btn-apply-confirm")?.addEventListener("click", () => {
@@ -1168,109 +1093,60 @@ function visibleConnections() {
         return groupMatch && typeMatch && (!search || databaseName.includes(search));
     });
 }
-// Debounce timer for renderQueryConnectionPanel
-let renderQueryPanelDebounceTimer = null;
-
 async function renderQueryConnectionPanel() {
-    if (!connectionsPanelList) return;
-
-    // Debounce rapid re-renders (e.g., from rapid clicks)
-    clearTimeout(renderQueryPanelDebounceTimer);
-    renderQueryPanelDebounceTimer = setTimeout(() => {
-        _renderQueryConnectionPanelImpl();
-    }, 0);
-}
-
-async function _renderQueryConnectionPanelImpl() {
     if (!connectionsPanelList) return;
     const items = visibleConnections();
     selectedConnectionIds.forEach(id => { if (!connections.some(connection => connection.id === id)) selectedConnectionIds.delete(id); });
-
-    // Handle empty state
-    if (!items.length) {
-        connectionsPanelList.innerHTML = '<p class="panel-empty">No authorized connections match these filters.</p>';
-        return;
-    }
-
-    // Auto-select first item if nothing selected
+    if (!items.length) { connectionsPanelList.innerHTML = '<p class="panel-empty">No authorized connections match these filters.</p>'; return; }
     if (items.length === 1 && selectedConnectionIds.size === 0) {
         selectedConnectionIds.add(items[0].id);
         await ensureSchemaMetadata(items[0].id);
     }
     if (selectedConnectionIds.size === 1) await ensureSchemaMetadata(Array.from(selectedConnectionIds)[0]);
 
-    // Build a map of current items by connection ID for efficient diffing
-    const currentItemsMap = new Map();
+    // Efficient DOM update - only rebuild if necessary
+    const currentItems = connectionsPanelList.querySelectorAll(".connection-panel-item");
+    if (currentItems.length !== items.length) {
+        // Length changed, do full rebuild
+        connectionsPanelList.innerHTML = "";
+    }
+
+    // Create a map of existing items by connection id for potential reuse
+    const existingItemsMap = new Map();
     connectionsPanelList.querySelectorAll(".connection-panel-item").forEach(el => {
         const connId = el.dataset.connectionId;
-        if (connId) currentItemsMap.set(connId, el);
+        if (connId) existingItemsMap.set(connId, el);
     });
 
-    // Use a document fragment to build new DOM off-screen
-    const fragment = document.createDocumentFragment();
-    const newItemsMap = new Map();
-
     items.forEach(connection => {
-        const connId = connection.id;
-        const isSelected = selectedConnectionIds.has(connId);
-        let item = currentItemsMap.get(connId);
-
-        if (item) {
-            // Reuse existing element - update only what changed (CSS class + text content)
-            item.className = `connection-panel-item${isSelected ? " selected" : ""}`;
-
-            // Only update text content if changed (avoids destroying/recreating child nodes and event listeners)
-            const nameEl = item.querySelector(".connection-panel-name");
-            const checkEl = item.querySelector(".connection-panel-check");
-
-            if (nameEl.textContent !== connection.name) {
-                nameEl.textContent = connection.name;
-            }
-            if (checkEl.textContent !== (isSelected ? "✓" : "")) {
-                checkEl.textContent = isSelected ? "✓" : "";
-            }
-
-            // Keep existing click listener (no need to re-bind)
-            fragment.appendChild(item);
-        } else {
-            // Create new element
+        let item = existingItemsMap.get(connection.id);
+        if (!item) {
             item = document.createElement("button");
             item.type = "button";
-            item.dataset.connectionId = connId;
-            item.className = `connection-panel-item${isSelected ? " selected" : ""}`;
-
-            // Build inner HTML once for new elements
-            item.innerHTML = `<span class="connection-panel-info"><span class="connection-panel-name">${escapeHtml(connection.name)}</span></span><span class="connection-panel-check">${isSelected ? "✓" : ""}</span>`;
-
-            // Add click listener
-            item.addEventListener("click", () => {
-                selectedConnectionIds.has(connId) ? selectedConnectionIds.delete(connId) : selectedConnectionIds.add(connId);
-                renderQueryConnectionPanel();
-                syncConnectionSelectionToActiveTab();
-            });
-
-            fragment.appendChild(item);
+            item.dataset.connectionId = connection.id;
+            connectionsPanelList.appendChild(item);
         }
-        newItemsMap.set(connId, item);
+        const isSelected = selectedConnectionIds.has(connection.id);
+        item.className = `connection-panel-item${isSelected ? " selected" : ""}`;
+        item.innerHTML = `<span class="connection-panel-info"><span class="connection-panel-name">${escapeHtml(connection.name)}</span></span><span class="connection-panel-check">${isSelected ? "✓" : ""}</span>`;
+
+        // Remove old click listener by cloning
+        const newItem = item.cloneNode(true);
+        item.parentNode.replaceChild(newItem, item);
+        newItem.addEventListener("click", () => {
+            selectedConnectionIds.has(connection.id) ? selectedConnectionIds.delete(connection.id) : selectedConnectionIds.add(connection.id);
+            renderQueryConnectionPanel();
+            syncConnectionSelectionToActiveTab();
+        });
     });
 
     // Remove items no longer in the filtered list
-    currentItemsMap.forEach((el, connId) => {
-        if (!newItemsMap.has(connId)) {
+    existingItemsMap.forEach((el, connId) => {
+        if (!items.some(c => c.id === connId)) {
             el.remove();
         }
     });
 
-    // Single DOM operation: replace all children with fragment
-    connectionsPanelList.innerHTML = "";
-    connectionsPanelList.appendChild(fragment);
-
-    syncConnectionSelectionToActiveTab();
-}
-
-function handleConnectionClick(connectionId) {
-    selectedConnectionIds.has(connectionId) ? selectedConnectionIds.delete(connectionId) : selectedConnectionIds.add(connectionId);
-    renderQueryConnectionPanel();
     syncConnectionSelectionToActiveTab();
 }
 function renderConnectionsList() {
@@ -1404,51 +1280,25 @@ function useConnection(id) { selectedConnectionIds.add(id); switchView("query-se
 async function executeQuery(tabId) {
     const tab = getTabById(tabId);
     if (!tab) return;
-
-    // Ensure UI elements are bound (defensive)
-    // Also check if elements are still connected to the DOM (not detached from tab switching)
-    const needsRebind = !tab.executeBtn || !tab.executeText || !tab.executeSpinner || !tab.resultsContainer ||
-                        !tab.executeBtn?.isConnected || !tab.executeText?.isConnected || !tab.executeSpinner?.isConnected || !tab.resultsContainer?.isConnected;
-    if (needsRebind) {
-        bindTabPanelEvents(tab);
-        // If still not bound after re-bind, try to find elements directly
-        if (!tab.executeBtn) {
-            tab.executeBtn = document.getElementById(`btn-execute-query-${tab.id}`);
-        }
-        if (!tab.executeText) {
-            tab.executeText = document.getElementById(`btn-execute-text-${tab.id}`);
-        }
-        if (!tab.executeSpinner) {
-            tab.executeSpinner = document.getElementById(`execute-spinner-${tab.id}`);
-        }
-        if (!tab.resultsContainer) {
-            tab.resultsContainer = document.getElementById(`results-container-${tab.id}`);
-        }
-    }
-
-    const sql = tab.editorElement?.value?.trim() || "";
+    
+    const sql = tab.editorElement.value.trim();
     if (!sql) return showToast("Enter a SQL query first", "warning");
     if (tab.connectionIds.size === 0) return showToast("Select at least one connection", "warning");
-
-    // Reset UI state - safely handle potentially missing elements
-    if (tab.executeBtn) tab.executeBtn.disabled = true;
-    if (tab.executeText) tab.executeText.textContent = "Executing...";
-    if (tab.executeSpinner) tab.executeSpinner.classList.remove("hidden");
-    if (tab.resultsPlaceholder) tab.resultsPlaceholder.classList.add("hidden");
-    if (tab.multiResultsContainer) {
-        tab.multiResultsContainer.classList.add("hidden");
-        tab.multiResultsContainer.innerHTML = "";
-    }
-    if (tab.errorContainer) tab.errorContainer.classList.add("hidden");
-    if (tab.editActions) tab.editActions.classList.add("hidden");
-    // Disable export dropdown button
-    const btnExport = document.getElementById(`btn-export-${tab.id}`);
-    if (btnExport) btnExport.disabled = true;
-
+    
+    tab.executeBtn.disabled = true;
+    tab.executeText.textContent = "Executing...";
+    tab.executeSpinner.classList.remove("hidden");
+    tab.resultsPlaceholder.classList.add("hidden");
+    tab.multiResultsContainer.classList.add("hidden");
+    tab.multiResultsContainer.innerHTML = "";
+    tab.errorContainer.classList.add("hidden");
+    tab.editActions.classList.add("hidden");
+    tab.btnExportCsv.disabled = true;
+    
     const limit = parseInt(queryLimitInput?.value) || 1000;
     const connIds = Array.from(tab.connectionIds);
     const isMulti = connIds.length > 1;
-
+    
     try {
         if (isMulti) {
             // Multi-connection execution
@@ -1477,22 +1327,16 @@ async function executeQuery(tabId) {
             renderSingleResult(tab, connId, result);
         }
     } catch (error) {
-        try {
-            if (tab.resultsPlaceholder) tab.resultsPlaceholder.classList.add("hidden");
-            if (tab.errorContainer) tab.errorContainer.classList.remove("hidden");
-            if (tab.errorMessage) tab.errorMessage.textContent = error.message;
-            if (tab.resultCount) tab.resultCount.textContent = "0 rows";
-            if (tab.executionTime) tab.executionTime.textContent = "0 ms";
-            showToast(`Query failed: ${error.message}`, "error");
-        } catch (e) {
-            // Ignore UI update errors in error handler
-            console.error("Error in query error handler:", e);
-        }
+        tab.resultsPlaceholder.classList.add("hidden");
+        tab.errorContainer.classList.remove("hidden");
+        tab.errorMessage.textContent = error.message;
+        tab.resultCount.textContent = "0 rows";
+        tab.executionTime.textContent = "0 ms";
+        showToast(`Query failed: ${error.message}`, "error");
     } finally {
-        // Ensure execute button always resets, even if elements are missing
-        if (tab.executeBtn) tab.executeBtn.disabled = false;
-        if (tab.executeText) tab.executeText.textContent = "Execute";
-        if (tab.executeSpinner) tab.executeSpinner.classList.add("hidden");
+        tab.executeBtn.disabled = false;
+        tab.executeText.textContent = "Execute";
+        tab.executeSpinner.classList.add("hidden");
     }
 }
 
@@ -1516,9 +1360,7 @@ function renderSingleResult(tab, connId, result) {
     } else {
         tab.editActions.classList.add("hidden");
     }
-    // Enable/disable export dropdown button
-    const btnExport = document.getElementById(`btn-export-${tab.id}`);
-    if (btnExport) btnExport.disabled = rowCount === 0;
+    tab.btnExportCsv.disabled = rowCount === 0;
     tab.currentExportData = { columns, rows };
 
     // Save HTML to tab for persistence when switching tabs
@@ -1537,9 +1379,7 @@ function renderMultiResults(tab, results) {
     tab.multiResultsContainer.classList.remove("hidden");
     tab.multiResultsContainer.innerHTML = "";
     tab.editActions.classList.add("hidden");
-    // Enable/disable export dropdown button
-    const btnExport = document.getElementById(`btn-export-${tab.id}`);
-    if (btnExport) btnExport.disabled = true;
+    tab.btnExportCsv.disabled = true;
 
     let totalRows = 0;
     let multiHtml = "";
@@ -2034,6 +1874,7 @@ function cacheDOMElements() {
     tableScrollContainer = document.getElementById("results-container");
     resultCount = document.getElementById("result-count");
     executionTime = document.getElementById("execution-time");
+    btnExportCsv = document.getElementById("btn-export-csv");
     errorContainer = document.getElementById("error-container");
     errorMessage = document.getElementById("error-message");
     btnClearHistory = document.getElementById("btn-clear-history");
@@ -2042,8 +1883,6 @@ function cacheDOMElements() {
     sidebarToggle = document.getElementById("sidebar-toggle");
     sidebarClose = document.getElementById("sidebar-close");
     sidebar = document.getElementById("sidebar");
-    sidebarOverlay = document.getElementById("sidebar-overlay");
-    sidebarToggleBtn = document.getElementById("sidebar-toggle-btn");
     appViews = document.querySelectorAll(".app-view");
     sidebarLinks = document.querySelectorAll(".sidebar-link");
     connectionsPanelList = document.getElementById("connections-panel-list");

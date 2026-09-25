@@ -7,8 +7,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=v1.0.14">
-    <script defer src="/static/js/app.js?v=v1.0.14"></script>
+    <link rel="stylesheet" href="/static/css/style.css?v=v1.0.11">
+    <script defer src="/static/js/app.js?v=v1.0.11"></script>
 </head>
 <body class="dark-theme">
     <div class="app-container">
@@ -21,15 +21,11 @@
                 </div>
             </div>
             <div class="logo-area">
-                <button class="sidebar-toggle-btn" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="false">
-                    <svg class="sidebar-toggle-icon-open" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <button class="sidebar-toggle-btn" id="sidebar-toggle" aria-label="Toggle navigation">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="3" y1="6" x2="21" y2="6"/>
                         <line x1="3" y1="12" x2="21" y2="12"/>
                         <line x1="3" y1="18" x2="21" y2="18"/>
-                    </svg>
-                    <svg class="sidebar-toggle-icon-close" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
                     </svg>
                 </button>
                 <div class="logo-icon">
@@ -43,7 +39,7 @@
                 </div>
                 <div class="logo-text">
                     <h1>Query Execute</h1>
-                    <span class="app-version-pill" id="app-version-pill">v1.0.14</span>
+                    <span class="app-version-pill" id="app-version-pill">v1.0.11</span>
                 </div>
             </div>
             <div class="header-controls">
@@ -61,14 +57,9 @@
         </header>
 
         <div class="page-body">
-            <div class="sidebar-overlay" id="sidebar-overlay"></div>
             <aside class="sidebar" id="sidebar">
                 <div class="sidebar-logo">
                     <span class="sidebar-app-name">Navigation</span>
-                    <button class="sidebar-toggle-btn" id="sidebar-toggle-btn" aria-label="Toggle sidebar" title="Toggle sidebar" aria-expanded="false">
-                        <svg class="sidebar-toggle-icon-open" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                        <svg class="sidebar-toggle-icon-close" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                    </button>
                     <button class="sidebar-close-btn" id="sidebar-close" aria-label="Close navigation">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
@@ -78,37 +69,28 @@
                         <li>
                             <a href="#" class="sidebar-link active" data-view="query-section">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
-                                <span>Query Editor</span>
+                                Query Editor
                             </a>
                         </li>
                         <li>
                             <a href="#" class="sidebar-link" data-view="connections-section">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-                                <span>Connections</span>
+                                Connections
                             </a>
                         </li>
                         <li class="admin-only">
-                            <a href="#" class="sidebar-link" data-view="users-section">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                                <span>Users</span>
-                            </a>
+                            <a href="#" class="sidebar-link" data-view="users-section">Users</a>
                         </li>
                         <li class="admin-only">
-                            <a href="#" class="sidebar-link" data-view="groups-section">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                                <span>Groups</span>
-                            </a>
+                            <a href="#" class="sidebar-link" data-view="groups-section">Groups</a>
                         </li>
                         <li>
-                            <a href="#" class="sidebar-link" data-view="settings-section" aria-label="Open application settings">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                                <span>Settings</span>
-                            </a>
+                            <a href="#" class="sidebar-link" data-view="settings-section" aria-label="Open application settings">Settings</a>
                         </li>
                         <li>
                             <a href="#" class="sidebar-link" data-view="history-section">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                <span>History</span>
+                                History
                             </a>
                         </li>
                     </ul>
@@ -181,7 +163,7 @@
                         </section>
                         <section class="settings-tab-panel hidden" id="updates-settings">
                             <h3>Application updates</h3>
-                            <p>Installed version: <strong id="current-app-version">v1.0.14</strong></p>
+                            <p>Installed version: <strong id="current-app-version">v1.0.11</strong></p>
                             <p id="update-status" role="status">Checking for updates…</p>
                             <div class="update-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
                                 <a id="btn-apply-update" class="btn btn-accent hidden" href="#" target="_blank" rel="noopener noreferrer">Open release page</a>
