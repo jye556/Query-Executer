@@ -1996,6 +1996,14 @@ async def update_application(user: Dict[str, Any] = Depends(admin_user)):
             return {"success": True, "message": "Already up to date", "updated": False}
 
         # Step 3: Pull latest changes
+        # First stash any local changes
+        subprocess.run(
+            ["git", "stash"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         result = subprocess.run(
             ["git", "pull", "origin", "main"],
             cwd=repo_root,

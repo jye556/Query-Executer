@@ -49,6 +49,9 @@ const context = {
     testFormConnection() {}, executeQuery() {}, applyResultEdits() {}, revertResultEdits() {},
     formatSql() {}, exportResultsToCSV() {}, clearHistory() {}, showUserForm() {}, saveUserForm() {},
     showGroupForm() {}, saveGroupForm() {}, fetchHistory() {},
+    btnNewQueryTab: null,
+    queryTabsContainer: null,
+    queryTabPanels: null,
 };
 vm.runInNewContext(`${script.slice(start, end)}\nsetupEventListeners()`, context);
 const form = elements.get("totp-setup-form");
