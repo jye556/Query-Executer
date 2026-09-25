@@ -15,6 +15,7 @@ import re
 from urllib.error import URLError
 from urllib.request import Request as UrlRequest, urlopen
 import sqlite3
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -2051,9 +2052,17 @@ async def update_application(user: Dict[str, Any] = Depends(admin_user)):
         )
         new_version = result.stdout.strip()
 
+        # Schedule process exit after response is sent so Docker restarts the container
+        import threading
+        import time
+        def delayed_exit():
+            time.sleep(2)  # Allow response to be sent
+            os._exit(0)    # Exit cleanly; Docker restart policy will restart container
+        threading.Thread(target=delayed_exit, daemon=True).start()
+
         return {
             "success": True,
-            "message": f"Updated to version {new_version}. Please restart the application.",
+            "message": f"Updated to version {new_version}. Restarting application...",
             "updated": True,
             "new_version": new_version,
             "restart_required": True,

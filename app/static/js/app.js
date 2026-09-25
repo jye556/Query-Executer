@@ -734,9 +734,14 @@ async function autoUpdate() {
 
         if (response.success) {
             if (response.updated) {
-                if (updateProgress) updateProgress.textContent = `Updated to ${response.new_version}. Restart required.`;
-                if (status) status.textContent = `Updated to ${response.new_version}. Please restart the application.`;
-                showToast(`Updated to version ${response.new_version}. Please restart the application.`, "success");
+                if (updateProgress) updateProgress.textContent = `Updated to ${response.new_version}. Restarting...`;
+                if (status) status.textContent = `Updated to ${response.new_version}. Restarting application...`;
+                showToast(`Updated to version ${response.new_version}. Restarting application.`, "success");
+                // Auto-restart: reload page with retry until server responds
+                const reloadWithRetry = () => {
+                    window.location.reload();
+                };
+                setTimeout(reloadWithRetry, 2000);
             } else {
                 if (updateProgress) updateProgress.textContent = "Already up to date.";
                 if (status) status.textContent = "You're up to date.";
