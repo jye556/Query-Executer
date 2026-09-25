@@ -1,6 +1,14 @@
 {
-  "version": "1.0.4",
+  "version": "1.0.5",
   "releases": [
+    {
+      "version": "1.0.5",
+      "date": "2026-09-25",
+      "notes": [
+        "Add idle timeout for web login (15 min default) to auto-logout inactive users.",
+        "Session cookies cleared after inactivity period; redirects to login page."
+      ]
+    },
     {
       "version": "1.0.4",
       "date": "2026-09-25",
