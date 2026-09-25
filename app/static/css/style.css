@@ -689,7 +689,10 @@ body {
 }
 
 .query-editor-split > .query-right-panel {
-    display: contents;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
 }
 
 .query-editor-split > .query-right-panel > .editor-card {
@@ -833,7 +836,10 @@ body {
 }
 
 .query-editor-split > .query-right-panel {
-    display: contents;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
 }
 
 .query-editor-split > .query-right-panel > .editor-card {
