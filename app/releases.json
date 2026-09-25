@@ -1,6 +1,16 @@
 {
-  "version": "1.0.6",
+  "version": "1.0.7",
   "releases": [
+    {
+      "version": "1.0.7",
+      "date": "2026-09-25",
+      "notes": [
+        "Add multi-tab SQL query editor with tab bar and new tab button.",
+        "Each tab has its own editor, connection selection, and results.",
+        "Tabs can be switched, closed, and maintain independent state.",
+        "Ctrl+Enter and Ctrl+E shortcuts work per tab."
+      ]
+    },
     {
       "version": "1.0.6",
       "date": "2026-09-25",
