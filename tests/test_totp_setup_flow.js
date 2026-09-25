@@ -37,7 +37,7 @@ const context = {
     showToast() {},
     localStorage: { getItem() { return "dark"; }, setItem() {} },
     applyTheme() {},
-    sidebarToggle: null, sidebarClose: null, sidebar: { classList: { toggle() {}, add() {}, remove() {} } },
+    sidebarToggle: { addEventListener() {}, setAttribute() {} }, sidebarClose: null, sidebar: { classList: { toggle() {}, add() {}, remove() {} } }, sidebarOverlay: { addEventListener() {}, classList: { remove() {}, add() {} } },
     sidebarLinks: [], btnShowAddConnection: null, btnCancelConnection: null,
     connGroupSelect: null, connNewGroupInput: null, queryGroupFilter: null, queryDbTypeFilter: null,
     queryDbSearch: null, connectionsGroupFilter: null, connectionsDbTypeFilter: null, connectionsSearchInput: null,

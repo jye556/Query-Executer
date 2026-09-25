@@ -1,11 +1,15 @@
 {
-  "version": "1.0.12",
+  "version": "1.0.13",
   "releases": [
     {
-      "version": "1.0.12",
+      "version": "1.0.13",
       "date": "2026-09-25",
       "notes": [
-        "Fixed execute button showing 'Executing...' indefinitely - added defensive UI element binding and error handling.",
+        "Fixed execute button error: 'Cannot set properties of null (setting 'disabled')' - defensive UI binding.",
+        "Faster connection selection with document fragment and efficient DOM updates.",
+        "Larger login form with improved spacing and input sizing.",
+        "Collapsible sidebar - click toggle to show icons only, hover to expand labels.",
+        "Fixed execute button error: 'Cannot set properties of null (setting 'disabled')' - defensive UI binding.",
         "Query Results grid lines visible in both light and dark themes.",
         "Edit button to toggle edit mode for result grid.",
         "Apply confirmation dialog showing SQL UPDATE statements before applying.",
