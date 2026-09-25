@@ -1327,6 +1327,11 @@ body {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    overflow-x: auto;
+}
+
+.multi-result-section {
+    min-width: max-content;
 }
 
 #multi-results-container:not(.hidden) {
@@ -1637,6 +1642,12 @@ body {
 /* Results Styles */
 .results-container {
     position: relative;
+    overflow-x: auto;
+    overflow-y: visible;
+}
+
+.results-container .excel-grid {
+    min-width: max-content;
 }
 
 .table-placeholder {

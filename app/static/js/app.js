@@ -84,7 +84,11 @@ function createQueryTab(initialQuery = "") {
         executionTime: 0,
         resultCount: 0,
         error: null,
-        isDirty: false
+        isDirty: false,
+        resultHtml: null,
+        multiResultHtml: null,
+        currentExportData: null,
+        currentEditContext: null
     };
     queryTabs.push(tab);
     return tab;
@@ -283,7 +287,17 @@ function bindTabPanelEvents(tab) {
         const btn = e.target.closest("button[data-suggestion]");
         if (btn) insertSuggestionForTab(tab, btn.dataset.suggestion);
     });
-    
+
+    // Auto-save query to localStorage on input
+    const saveQueryToStorage = () => {
+        try {
+            const savedTabs = JSON.parse(localStorage.getItem("qe_saved_queries") || "{}");
+            savedTabs[tab.id] = tab.query;
+            localStorage.setItem("qe_saved_queries", JSON.stringify(savedTabs));
+        } catch (_) {}
+    };
+    newEditor.addEventListener("input", saveQueryToStorage);
+
     // Restore state
     newEditor.value = tab.query;
     updateQueryCheckForTab(tab);
@@ -394,13 +408,46 @@ function switchTab(tabId) {
     activeTabId = tabId;
     renderQueryTabs();
     renderTabPanels();
-    
+
     // Sync connection selection to active tab
     syncConnectionSelectionToActiveTab();
+
+    // Restore results for the active tab
+    const activeTab = getActiveTab();
+    if (activeTab) {
+        restoreTabResults(activeTab);
+    }
+}
+
+function restoreTabResults(tab) {
+    if (!tab.resultsContainer || !tab.multiResultsContainer) return;
+
+    if (tab.resultHtml) {
+        // Single connection result
+        tab.resultsPlaceholder.classList.add("hidden");
+        tab.multiResultsContainer.classList.add("hidden");
+        tab.errorContainer?.classList.add("hidden");
+        tab.resultsContainer.innerHTML = tab.resultHtml;
+        tab.resultsContainer.querySelectorAll("td[contenteditable='true']").forEach(cell => {
+            cell.addEventListener("blur", e => handleCellEdit(tab, e));
+        });
+    } else if (tab.multiResultHtml) {
+        // Multi-connection results
+        tab.resultsPlaceholder.classList.add("hidden");
+        tab.errorContainer?.classList.add("hidden");
+        tab.multiResultsContainer.classList.remove("hidden");
+        tab.multiResultsContainer.innerHTML = tab.multiResultHtml;
+    }
 }
 
 function addQueryTab() {
-    const tab = createQueryTab("");
+    // Load saved queries from localStorage
+    let savedQueries = {};
+    try {
+        savedQueries = JSON.parse(localStorage.getItem("qe_saved_queries") || "{}");
+    } catch (_) {}
+    const tabId = `tab-${tabCounter + 1}`;
+    const tab = createQueryTab(savedQueries[tabId] || "");
     activeTabId = tab.id;
     renderQueryTabs();
     renderTabPanels();
@@ -411,22 +458,29 @@ function addQueryTab() {
 function closeQueryTab(tabId) {
     const index = queryTabs.findIndex(t => t.id === tabId);
     if (index === -1) return;
-    
+
     const wasActive = queryTabs[index].id === activeTabId;
     queryTabs.splice(index, 1);
-    
+
+    // Remove saved query for closed tab
+    try {
+        const savedQueries = JSON.parse(localStorage.getItem("qe_saved_queries") || "{}");
+        delete savedQueries[tabId];
+        localStorage.setItem("qe_saved_queries", JSON.stringify(savedQueries));
+    } catch (_) {}
+
     if (queryTabs.length === 0) {
         // Create a new empty tab
         addQueryTab();
         return;
     }
-    
+
     if (wasActive) {
         // Activate the previous tab or the next one
         const newIndex = Math.min(index, queryTabs.length - 1);
         activeTabId = queryTabs[newIndex].id;
     }
-    
+
     renderQueryTabs();
     renderTabPanels();
     syncConnectionSelectionToActiveTab();
@@ -468,8 +522,14 @@ function updateConnectionSelectionUI(tab) {
 
 function initializeQueryTabs() {
     if (queryTabs.length === 0) {
-        createQueryTab("");
-        activeTabId = queryTabs[0].id;
+        // Load saved queries from localStorage
+        let savedQueries = {};
+        try {
+            savedQueries = JSON.parse(localStorage.getItem("qe_saved_queries") || "{}");
+        } catch (_) {}
+
+        const tab = createQueryTab(savedQueries[`tab-1`] || "");
+        activeTabId = tab.id;
         renderQueryTabs();
         renderTabPanels();
     }
@@ -1130,18 +1190,18 @@ async function executeQuery(tabId) {
 function renderSingleResult(tab, connId, result) {
     const connection = connections.find(c => c.id === connId);
     const dbName = connection?.name || connId;
-    
+
     tab.resultsPlaceholder.classList.add("hidden");
     tab.multiResultsContainer.classList.add("hidden");
     tab.errorContainer.classList.add("hidden");
-    
+
     // Build editable grid
     const { html, editContext, rowCount, columns, rows } = buildEditableGrid(result, tab.id);
     tab.currentEditContext = editContext;
     tab.currentResultData = { columns, rows };
     tab.resultCount.textContent = `${rowCount} row${rowCount !== 1 ? "s" : ""}`;
     tab.executionTime.textContent = `${result.execution_time_ms || 0} ms`;
-    
+
     if (editContext && (currentUser?.role === "admin" || currentUser?.role === "writer")) {
         tab.editActions.classList.remove("hidden");
     } else {
@@ -1149,7 +1209,11 @@ function renderSingleResult(tab, connId, result) {
     }
     tab.btnExportCsv.disabled = rowCount === 0;
     tab.currentExportData = { columns, rows };
-    
+
+    // Save HTML to tab for persistence when switching tabs
+    tab.resultHtml = html;
+    tab.multiResultHtml = null;
+
     tab.resultsContainer.innerHTML = html;
     tab.resultsContainer.querySelectorAll("td[contenteditable='true']").forEach(cell => {
         cell.addEventListener("blur", e => handleCellEdit(tab, e));
@@ -1163,24 +1227,34 @@ function renderMultiResults(tab, results) {
     tab.multiResultsContainer.innerHTML = "";
     tab.editActions.classList.add("hidden");
     tab.btnExportCsv.disabled = true;
-    
+
     let totalRows = 0;
+    let multiHtml = "";
     results.forEach(r => {
         const connection = connections.find(c => c.id === r.connectionId);
         const dbName = connection?.name || r.connectionId;
-        
+
         const section = document.createElement("div");
         section.className = "multi-result-section";
-        
+
         if (r.success) {
             const { html, rowCount } = buildEditableGrid(r.data, tab.id);
             totalRows += rowCount;
-            section.innerHTML = `<h4>${escapeHtml(dbName)} (${rowCount} row${rowCount !== 1 ? "s" : ""})</h4>${html}`;
+            const sectionHtml = `<h4>${escapeHtml(dbName)} (${rowCount} row${rowCount !== 1 ? "s" : ""})</h4>${html}`;
+            section.innerHTML = sectionHtml;
+            multiHtml += sectionHtml;
         } else {
-            section.innerHTML = `<h4>${escapeHtml(dbName)}</h4><div class="error-container"><h4>Error</h4><pre>${escapeHtml(r.error)}</pre></div>`;
+            const sectionHtml = `<h4>${escapeHtml(dbName)}</h4><div class="error-container"><h4>Error</h4><pre>${escapeHtml(r.error)}</pre></div>`;
+            section.innerHTML = sectionHtml;
+            multiHtml += sectionHtml;
         }
         tab.multiResultsContainer.appendChild(section);
     });
+
+    // Save HTML to tab for persistence when switching tabs
+    tab.multiResultHtml = multiHtml;
+    tab.resultHtml = null;
+
     tab.resultCount.textContent = `${totalRows} total row${totalRows !== 1 ? "s" : ""}`;
     tab.executionTime.textContent = `${results.reduce((sum, r) => sum + (r.data?.execution_time_ms || 0), 0)} ms`;
 }
