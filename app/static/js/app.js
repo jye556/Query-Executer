@@ -569,7 +569,9 @@ function syncConnectionSelectionToActiveTab() {
     updateConnectionSelectionUI(activeTab);
 
     // Auto-re-execute query when connection selection changes (single connection mode)
-    if (activeTab.connectionIds.size === 1 && activeTab.query && activeTab.query.trim()) {
+    // Only if there's already a result displayed (user has executed before)
+    if (activeTab.connectionIds.size === 1 && activeTab.query && activeTab.query.trim() &&
+        (activeTab.resultHtml || activeTab.multiResultHtml)) {
         debouncedExecuteQuery(activeTab.id);
     }
 }
