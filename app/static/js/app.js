@@ -876,9 +876,16 @@ function setupEventListeners() {
     document.getElementById("sidebar-toggle-btn")?.addEventListener("click", () => {
         toggleSidebarCollapsed();
     });
+    document.getElementById("sidebar-toggle")?.addEventListener("click", () => {
+        if (!sidebar) return;
+        const isHidden = sidebar.classList.toggle("hidden");
+        sidebarOverlay?.classList.toggle("visible", !isHidden);
+        document.getElementById("sidebar-toggle")?.setAttribute("aria-expanded", (!isHidden).toString());
+    });
     document.getElementById("sidebar-close")?.addEventListener("click", () => {
         const sidebar = document.getElementById("sidebar");
         sidebar?.classList.add("hidden");
+        sidebarOverlay?.classList.remove("visible");
     });
 
     // Apply confirmation dialog handlers
@@ -1401,16 +1408,29 @@ async function executeQuery(tabId) {
     // Ensure UI elements are bound (defensive)
     // Also check if elements are still connected to the DOM (not detached from tab switching)
     const needsRebind = !tab.executeBtn || !tab.executeText || !tab.executeSpinner || !tab.resultsContainer ||
-                        !tab.executeBtn.isConnected || !tab.executeText.isConnected || !tab.executeSpinner.isConnected || !tab.resultsContainer.isConnected;
+                        !tab.executeBtn?.isConnected || !tab.executeText?.isConnected || !tab.executeSpinner?.isConnected || !tab.resultsContainer?.isConnected;
     if (needsRebind) {
         bindTabPanelEvents(tab);
+        // If still not bound after re-bind, try to find elements directly
+        if (!tab.executeBtn) {
+            tab.executeBtn = document.getElementById(`btn-execute-query-${tab.id}`);
+        }
+        if (!tab.executeText) {
+            tab.executeText = document.getElementById(`btn-execute-text-${tab.id}`);
+        }
+        if (!tab.executeSpinner) {
+            tab.executeSpinner = document.getElementById(`execute-spinner-${tab.id}`);
+        }
+        if (!tab.resultsContainer) {
+            tab.resultsContainer = document.getElementById(`results-container-${tab.id}`);
+        }
     }
 
     const sql = tab.editorElement?.value?.trim() || "";
     if (!sql) return showToast("Enter a SQL query first", "warning");
     if (tab.connectionIds.size === 0) return showToast("Select at least one connection", "warning");
 
-    // Reset UI state
+    // Reset UI state - safely handle potentially missing elements
     if (tab.executeBtn) tab.executeBtn.disabled = true;
     if (tab.executeText) tab.executeText.textContent = "Executing...";
     if (tab.executeSpinner) tab.executeSpinner.classList.remove("hidden");
@@ -1469,14 +1489,10 @@ async function executeQuery(tabId) {
             console.error("Error in query error handler:", e);
         }
     } finally {
-        try {
-            if (tab.executeBtn) tab.executeBtn.disabled = false;
-            if (tab.executeText) tab.executeText.textContent = "Execute";
-            if (tab.executeSpinner) tab.executeSpinner.classList.add("hidden");
-        } catch (e) {
-            // Ensure button resets even if UI elements are missing
-            console.error("Error resetting execute button:", e);
-        }
+        // Ensure execute button always resets, even if elements are missing
+        if (tab.executeBtn) tab.executeBtn.disabled = false;
+        if (tab.executeText) tab.executeText.textContent = "Execute";
+        if (tab.executeSpinner) tab.executeSpinner.classList.add("hidden");
     }
 }
 
@@ -2027,6 +2043,7 @@ function cacheDOMElements() {
     sidebarClose = document.getElementById("sidebar-close");
     sidebar = document.getElementById("sidebar");
     sidebarOverlay = document.getElementById("sidebar-overlay");
+    sidebarToggleBtn = document.getElementById("sidebar-toggle-btn");
     appViews = document.querySelectorAll(".app-view");
     sidebarLinks = document.querySelectorAll(".sidebar-link");
     connectionsPanelList = document.getElementById("connections-panel-list");

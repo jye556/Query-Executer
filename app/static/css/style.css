@@ -2467,6 +2467,11 @@ body {
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-xl);
 }
+
+.auth-card-lg {
+    max-width: 560px;
+    padding: 3.5rem;
+}
 .auth-brand { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
 .auth-header-actions { display: flex; justify-content: flex-end; margin: -3rem 0 1.5rem; }
 .auth-header-actions .icon-button { flex: none; }
