@@ -7,9 +7,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=v1.0.13">
+    <link rel="stylesheet" href="/static/css/style.css?v=v1.0.14">
 </head>
 <body class="dark-theme auth-page">
+    <div class="version-update-banner hidden" id="version-update-banner" role="status">
+        <span id="version-update-message"></span>
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; justify-content: center;">
+            <a id="version-update-link" href="#" target="_blank" rel="noopener noreferrer">View update</a>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-auto-update-banner" style="display: none;">Update now</button>
+        </div>
+    </div>
     <main class="auth-shell">
         <section class="auth-card auth-card-lg" aria-labelledby="login-title">
             <div class="auth-brand">
