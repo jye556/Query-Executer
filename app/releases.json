@@ -1,6 +1,14 @@
 {
-  "version": "1.0.7",
+  "version": "1.0.8",
   "releases": [
+    {
+      "version": "1.0.8",
+      "date": "2026-09-25",
+      "notes": [
+        "Fix multi-tab query editor layout - editor and results now properly display in each tab.",
+        "Use flexbox for right panel instead of display: contents."
+      ]
+    },
     {
       "version": "1.0.7",
       "date": "2026-09-25",
