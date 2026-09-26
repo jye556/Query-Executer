@@ -2,8 +2,6 @@
 
 Query Execute is a self-hosted web app for running SQL against PostgreSQL, MySQL/MariaDB, Firebird, Microsoft SQL Server, and SQLite. Manage saved database connections, organize them into groups, review query history, export results, and optionally protect your account with authenticator-app two-factor authentication (2FA).
 
-**Current version: v1.0.4**
-
 ## 1. Choose where to install
 
 Choose one installation method:
