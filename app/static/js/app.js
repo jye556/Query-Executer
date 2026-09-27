@@ -23,6 +23,9 @@ let queryTabs = [];
 let activeTabId = null;
 let tabCounter = 0;
 
+// Editor preferences (loaded from localStorage)
+let editorPreferences = {};
+
 let btnShowAddConnection, addConnectionFormContainer, addConnectionForm,
     btnCancelConnection, connTogglePwdBtn, connPwdInput, connectionsListContainer,
     queryLimitInput, connGroupSelect, connNewGroupInput, queryGroupFilter, queryDbTypeFilter, queryDbSearch,
@@ -88,7 +91,10 @@ function createQueryTab(initialQuery = "") {
         resultHtml: null,
         multiResultHtml: null,
         currentExportData: null,
-        currentEditContext: null
+        currentEditContext: null,
+        editorView: null,
+        editorInstance: null,
+        editorContainer: null
     };
     queryTabs.push(tab);
     return tab;
@@ -142,7 +148,7 @@ function renderTabPanelContent(tab) {
             </div>
 
             <div class="editor-pane">
-                <div class="editor-container">
+                <div class="editor-container" id="editor-container-${tab.id}">
                     <div class="editor-header">
                         <span class="editor-lang">SQL</span>
                         <div class="editor-actions">
@@ -155,7 +161,7 @@ function renderTabPanelContent(tab) {
                             </button>
                         </div>
                     </div>
-                    <textarea id="query-editor-${tab.id}" class="code-editor" spellcheck="false" placeholder="Enter any SQL statement here...&#10;&#10;SELECT * FROM users;&#10;CREATE TABLE example (id INTEGER);">${escapeHtml(tab.query)}</textarea>
+                    <div id="query-editor-${tab.id}" class="cm-editor-host"></div>
                     <div id="query-suggestions-${tab.id}" class="query-suggestions hidden" role="listbox" aria-label="Table and field suggestions"></div>
                 </div>
             </div>
@@ -209,12 +215,10 @@ function renderTabPanelContent(tab) {
 
 function bindTabPanelEvents(tab) {
     if (!tab) return;
-    
-    const editor = document.getElementById(`query-editor-${tab.id}`);
-    if (!editor) return;
-    
-    // Store reference for easy access
-    tab.editorElement = editor;
+
+    // Get DOM elements
+    tab.editorContainer = document.getElementById(`editor-container-${tab.id}`);
+    tab.editorHost = document.getElementById(`query-editor-${tab.id}`);
     tab.suggestionsElement = document.getElementById(`query-suggestions-${tab.id}`);
     tab.checkStatusElement = document.getElementById(`query-check-status-${tab.id}`);
     tab.executeBtn = document.getElementById(`btn-execute-query-${tab.id}`);
@@ -231,62 +235,122 @@ function bindTabPanelEvents(tab) {
     tab.btnApplyEdits = document.getElementById(`btn-apply-result-edits-${tab.id}`);
     tab.btnRevertEdits = document.getElementById(`btn-revert-result-edits-${tab.id}`);
     tab.editActions = document.getElementById(`result-edit-actions-${tab.id}`);
-    
-    // Clear any old event listeners by cloning
-    const newEditor = editor.cloneNode(true);
-    editor.parentNode.replaceChild(newEditor, editor);
-    tab.editorElement = newEditor;
-    
-    // Bind events
-    newEditor.addEventListener("keydown", event => {
-        if ((event.ctrlKey || event.metaKey) && (event.key === "Enter" || event.key.toLowerCase() === "e")) { 
-            event.preventDefault(); 
-            executeQuery(tab.id); 
+
+    // Initialize CodeMirror editor if not already created
+    if (!tab.editorInstance && tab.editorHost && window.CodeMirrorEditor) {
+        const isDarkTheme = document.documentElement.dataset.theme === "dark";
+        const prefs = editorPreferences[tab.id] || {};
+
+        window.CodeMirrorEditor.createEditor(tab.id, tab.editorHost, tab.query, {
+            theme: prefs.theme || (isDarkTheme ? "dark" : "light"),
+            fontSize: prefs.fontSize || 14,
+            lineWrapping: prefs.lineWrapping !== false,
+            lineNumbers: prefs.lineNumbers !== false,
+            bracketMatching: true,
+            autoCloseBrackets: true,
+            tabSize: prefs.tabSize || 4,
+            indentWithTab: true,
+            placeholder: "Enter any SQL statement here...\n\nSELECT * FROM users;\nCREATE TABLE example (id INTEGER);"
+        }).then(instance => {
+            tab.editorInstance = instance;
+            tab.editorView = instance.view;
+
+            // Restore query value
+            if (tab.query) {
+                instance.setValue(tab.query);
+            }
+
+            // Apply preferences after editor is ready
+            if (Object.keys(prefs).length > 0) {
+                window.CodeMirrorEditor.applyEditorPreferences(tab.id, prefs);
+            }
+
+            // Focus editor if this is the active tab
+            if (tab.id === activeTabId) {
+                instance.focus();
+            }
+        }).catch(err => {
+            console.error("Failed to initialize CodeMirror:", err);
+            // Fallback to textarea
+            fallbackToTextarea(tab);
+        });
+    } else if (tab.editorInstance) {
+        // Editor already exists, just focus if active
+        if (tab.id === activeTabId) {
+            tab.editorInstance.focus();
         }
-        if (event.key === "Escape") hideQuerySuggestions();
-    });
-    newEditor.addEventListener("input", () => { 
-        tab.query = newEditor.value;
-        tab.isDirty = true;
-        updateTabName(tab);
-        updateQueryCheckForTab(tab);
-        updateQuerySuggestionsForTab(tab); 
-    });
-    newEditor.addEventListener("click", () => updateQuerySuggestionsForTab(tab));
-    newEditor.addEventListener("keyup", () => updateQuerySuggestionsForTab(tab));
-    newEditor.addEventListener("select", () => updateQuerySuggestionsForTab(tab));
-    
+    }
+
     // Execute button
     tab.executeBtn?.addEventListener("click", () => executeQuery(tab.id));
-    
+
     // Clear editor
     document.getElementById(`btn-clear-editor-${tab.id}`)?.addEventListener("click", () => {
-        newEditor.value = "";
-        tab.query = "";
-        tab.isDirty = true;
-        updateTabName(tab);
-        updateQueryCheckForTab(tab);
+        if (tab.editorInstance) {
+            tab.editorInstance.setValue("");
+            tab.query = "";
+            tab.isDirty = true;
+            updateTabName(tab);
+            updateQueryCheckForTab(tab);
+            tab.editorInstance.focus();
+        }
     });
-    
+
     // Format SQL (placeholder)
     document.getElementById(`btn-format-sql-${tab.id}`)?.addEventListener("click", () => {
         showToast("SQL formatting not yet implemented", "info");
     });
-    
+
     // Apply edits
     tab.btnApplyEdits?.addEventListener("click", () => applyResultEdits(tab.id));
-    
+
     // Revert edits
     tab.btnRevertEdits?.addEventListener("click", () => revertResultEdits(tab.id));
-    
+
     // Export CSV
     tab.btnExportCsv?.addEventListener("click", () => exportCsv(tab.id));
-    
+
     // Suggestion clicks
     tab.suggestionsElement?.addEventListener("click", e => {
         const btn = e.target.closest("button[data-suggestion]");
         if (btn) insertSuggestionForTab(tab, btn.dataset.suggestion);
     });
+
+    // Initialize query check
+    updateQueryCheckForTab(tab);
+}
+
+/**
+ * Fallback to textarea if CodeMirror fails to load
+ */
+function fallbackToTextarea(tab) {
+    if (!tab.editorHost) return;
+
+    tab.editorHost.innerHTML = `
+        <textarea id="query-editor-fallback-${tab.id}" class="code-editor" spellcheck="false"
+            placeholder="Enter any SQL statement here...&#10;&#10;SELECT * FROM users;&#10;CREATE TABLE example (id INTEGER);">${escapeHtml(tab.query)}</textarea>
+    `;
+
+    const editor = document.getElementById(`query-editor-fallback-${tab.id}`);
+    tab.editorElement = editor;
+
+    editor.addEventListener("keydown", event => {
+        if ((event.ctrlKey || event.metaKey) && (event.key === "Enter" || event.key.toLowerCase() === "e")) {
+            event.preventDefault();
+            executeQuery(tab.id);
+        }
+        if (event.key === "Escape") hideQuerySuggestions();
+    });
+    editor.addEventListener("input", () => {
+        tab.query = editor.value;
+        tab.isDirty = true;
+        updateTabName(tab);
+        updateQueryCheckForTab(tab);
+        updateQuerySuggestionsForTab(tab);
+    });
+    editor.addEventListener("click", () => updateQuerySuggestionsForTab(tab));
+    editor.addEventListener("keyup", () => updateQuerySuggestionsForTab(tab));
+    editor.addEventListener("select", () => updateQuerySuggestionsForTab(tab));
 
     // Auto-save query to localStorage on input
     const saveQueryToStorage = () => {
@@ -296,17 +360,16 @@ function bindTabPanelEvents(tab) {
             localStorage.setItem("qe_saved_queries", JSON.stringify(savedTabs));
         } catch (_) {}
     };
-    newEditor.addEventListener("input", saveQueryToStorage);
+    editor.addEventListener("input", saveQueryToStorage);
 
-    // Restore state
-    newEditor.value = tab.query;
+    editor.value = tab.query;
     updateQueryCheckForTab(tab);
 }
 
 function updateQueryCheckForTab(tab) {
     const sql = tab.query.trim();
     if (!sql) return setTabQueryCheck(tab, "Ready", "ready");
-    
+
     const quotes = { "'": "'", '"': '"', "`": "`", "[": "]" };
     const stack = [];
     let quote = "", lineComment = false, blockComment = false;
@@ -325,21 +388,35 @@ function updateQueryCheckForTab(tab) {
         }
     }
     if (quote || blockComment || stack.length) return setTabQueryCheck(tab, "Error: incomplete quote, comment, or parenthesis", "error");
-    
+
     const visible = sql.replace(/--[^\n]*/g, " ").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/'(?:''|[^'])*'|"(?:""|[^"])*"|`[^`]*`|\[(?:[^\]]|\]\])*\]/g, "''");
     const semicolons = (visible.match(/;/g) || []).length;
     if (semicolons > 1 || /;\s*\S/.test(visible)) return setTabQueryCheck(tab, "Error: run one SQL statement at a time", "error");
-    
+
     if (tab.connectionIds.size === 1) {
-        const selection = tab.editorElement.value.slice(tab.editorElement.selectionStart, tab.editorElement.selectionEnd).trim();
+        // Get selection from CodeMirror or fallback textarea
+        let selection = "";
+        if (tab.editorView) {
+            const { state } = tab.editorView;
+            const { ranges } = state.selection;
+            if (ranges[0].from !== ranges[0].to) {
+                selection = state.sliceDoc(ranges[0].from, ranges[0].to).trim();
+            }
+        } else if (tab.editorElement) {
+            selection = tab.editorElement.value.slice(tab.editorElement.selectionStart, tab.editorElement.selectionEnd).trim();
+        }
         const checkSql = selection || sql;
         const selected = tab.connectionIds.values().next().value;
         apiFetch("/api/query/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connection_id: selected, query: checkSql }) })
-            .then(result => { 
-                if (tab.editorElement.value.trim() === sql && (tab.editorElement.value.slice(tab.editorElement.selectionStart, tab.editorElement.selectionEnd).trim() || sql) === checkSql) 
-                    setTabQueryCheck(tab, result.valid ? "Query syntax is valid" : `Error: ${result.error}`, result.valid ? "valid" : "error"); 
+            .then(result => {
+                const currentSql = tab.query.trim();
+                const currentSelection = tab.editorView
+                    ? tab.editorView.state.sliceDoc(tab.editorView.state.selection.main.from, tab.editorView.state.selection.main.to).trim()
+                    : (tab.editorElement ? tab.editorElement.value.slice(tab.editorElement.selectionStart, tab.editorElement.selectionEnd).trim() : "");
+                if (currentSql === sql && (currentSelection || sql) === checkSql)
+                    setTabQueryCheck(tab, result.valid ? "Query syntax is valid" : `Error: ${result.error}`, result.valid ? "valid" : "error");
             })
-            .catch(() => { if (tab.editorElement.value.trim() === sql) setTabQueryCheck(tab, "Syntax could not be checked; execution will still validate", "ready"); });
+            .catch(() => { if (tab.query.trim() === sql) setTabQueryCheck(tab, "Syntax could not be checked; execution will still validate", "ready"); });
         return;
     }
     setTabQueryCheck(tab, "Syntax structure looks balanced; select one connection for a syntax check", "valid");
@@ -359,7 +436,19 @@ function hideQuerySuggestions() {
 function updateQuerySuggestionsForTab(tab) {
     const popup = tab.suggestionsElement;
     if (!popup || tab.connectionIds.size !== 1) return popup?.classList.add("hidden");
-    const before = tab.editorElement.value.slice(0, tab.editorElement.selectionStart);
+
+    // Get text before cursor from CodeMirror or fallback textarea
+    let before = "";
+    if (tab.editorView) {
+        const { state } = tab.editorView;
+        const pos = state.selection.main.head;
+        before = state.sliceDoc(0, pos);
+    } else if (tab.editorElement) {
+        before = tab.editorElement.value.slice(0, tab.editorElement.selectionStart);
+    } else {
+        return popup.classList.add("hidden");
+    }
+
     const fromMatch = before.match(/\b(?:FROM|JOIN|UPDATE|INTO)\s+([\w$]*)$/i);
     const simpleContext = before.match(/\b(?:FROM|JOIN)\s+([A-Za-z_][\w$]*)\b([\s\S]*)$/i);
     const dotColumnMatch = before.match(/\b(?:WHERE|ON|AND|OR|BY|SET|SELECT|,)\s*([\w$]+)\.([\w$]*)$/i);
@@ -389,18 +478,37 @@ function updateQuerySuggestionsForTab(tab) {
 }
 
 function insertSuggestionForTab(tab, value) {
-    const start = tab.editorElement.selectionStart, end = tab.editorElement.selectionEnd;
-    const before = tab.editorElement.value.slice(0, start), after = tab.editorElement.value.slice(end);
-    const tokenStart = before.search(/[A-Za-z_][A-Za-z0-9_$]*$/);
-    tab.editorElement.value = `${before.slice(0, tokenStart < 0 ? before.length : tokenStart)}${value}${after}`;
-    const cursor = tab.editorElement.value.length - after.length;
-    tab.editorElement.setSelectionRange(cursor, cursor);
-    tab.editorElement.focus();
-    tab.query = tab.editorElement.value;
-    tab.isDirty = true;
-    updateTabName(tab);
-    updateQueryCheckForTab(tab);
-    hideQuerySuggestions();
+    if (tab.editorView) {
+        const { state } = tab.editorView;
+        const { from, to } = state.selection.main;
+        const before = state.sliceDoc(0, from);
+        const tokenStart = before.search(/[A-Za-z_][A-Za-z0-9_$]*$/);
+        const insertPos = tokenStart < 0 ? from : from - (before.length - tokenStart);
+
+        tab.editorView.dispatch({
+            changes: { from: insertPos, to, insert: value },
+            selection: { anchor: insertPos + value.length }
+        });
+        tab.editorView.focus();
+        tab.query = tab.editorView.state.doc.toString();
+        tab.isDirty = true;
+        updateTabName(tab);
+        updateQueryCheckForTab(tab);
+        hideQuerySuggestions();
+    } else if (tab.editorElement) {
+        const start = tab.editorElement.selectionStart, end = tab.editorElement.selectionEnd;
+        const before = tab.editorElement.value.slice(0, start), after = tab.editorElement.value.slice(end);
+        const tokenStart = before.search(/[A-Za-z_][A-Za-z0-9_$]*$/);
+        tab.editorElement.value = `${before.slice(0, tokenStart < 0 ? before.length : tokenStart)}${value}${after}`;
+        const cursor = tab.editorElement.value.length - after.length;
+        tab.editorElement.setSelectionRange(cursor, cursor);
+        tab.editorElement.focus();
+        tab.query = tab.editorElement.value;
+        tab.isDirty = true;
+        updateTabName(tab);
+        updateQueryCheckForTab(tab);
+        hideQuerySuggestions();
+    }
 }
 
 function switchTab(tabId) {
@@ -417,6 +525,16 @@ function switchTab(tabId) {
     if (activeTab) {
         restoreTabResults(activeTab);
     }
+
+    // Focus editor for the active tab
+    setTimeout(() => {
+        const tab = getActiveTab();
+        if (tab && tab.editorInstance) {
+            tab.editorInstance.focus();
+        } else if (tab && tab.editorElement) {
+            tab.editorElement.focus();
+        }
+    }, 50);
 }
 
 function restoreTabResults(tab) {
@@ -452,14 +570,32 @@ function addQueryTab() {
     renderQueryTabs();
     renderTabPanels();
     syncConnectionSelectionToActiveTab();
-    tab.editorElement?.focus();
+
+    // Focus editor after a brief delay to allow CodeMirror to initialize
+    setTimeout(() => {
+        if (tab.editorInstance) {
+            tab.editorInstance.focus();
+        } else if (tab.editorElement) {
+            tab.editorElement.focus();
+        }
+    }, 100);
 }
 
 function closeQueryTab(tabId) {
     const index = queryTabs.findIndex(t => t.id === tabId);
     if (index === -1) return;
 
-    const wasActive = queryTabs[index].id === activeTabId;
+    const tab = queryTabs[index];
+
+    // Destroy CodeMirror editor instance
+    if (tab.editorInstance && window.CodeMirrorEditor) {
+        window.CodeMirrorEditor.destroyEditor(tabId);
+    }
+
+    // Clean up editor preferences
+    delete editorPreferences[tabId];
+
+    const wasActive = tab.id === activeTabId;
     queryTabs.splice(index, 1);
 
     // Remove saved query for closed tab
@@ -499,6 +635,89 @@ function updateTabName(tab) {
     renderQueryTabs();
 }
 
+/**
+ * Save editor preferences to localStorage
+ */
+function saveEditorPreferences() {
+    try {
+        localStorage.setItem("qe_editor_preferences", JSON.stringify(editorPreferences));
+    } catch (_) {}
+}
+
+/**
+ * Update editor preferences for a tab
+ */
+function updateEditorPreferences(tabId, prefs) {
+    if (!editorPreferences[tabId]) {
+        editorPreferences[tabId] = {};
+    }
+    editorPreferences[tabId] = { ...editorPreferences[tabId], ...prefs };
+    saveEditorPreferences();
+
+    // Apply to existing editor
+    if (window.CodeMirrorEditor) {
+        window.CodeMirrorEditor.applyEditorPreferences(tabId, editorPreferences[tabId]);
+    }
+}
+
+/**
+ * Get editor preferences for a tab
+ */
+function getEditorPreferences(tabId) {
+    return editorPreferences[tabId] || {};
+}
+
+/**
+ * Save editor preferences handler
+ */
+function saveEditorPreferencesHandler() {
+    const activeTab = getActiveTab();
+    if (!activeTab) return;
+
+    const prefs = {
+        fontSize: parseInt(document.getElementById("editor-font-size")?.value) || 14,
+        tabSize: parseInt(document.getElementById("editor-tab-size")?.value) || 4,
+        lineWrapping: document.getElementById("editor-line-wrapping")?.checked !== false,
+        lineNumbers: document.getElementById("editor-line-numbers")?.checked !== false,
+        bracketMatching: document.getElementById("editor-bracket-matching")?.checked !== false,
+        autoCloseBrackets: document.getElementById("editor-auto-close-brackets")?.checked !== false,
+        theme: document.getElementById("editor-theme")?.value || "auto"
+    };
+
+    updateEditorPreferences(activeTab.id, prefs);
+    showToast("Editor preferences saved", "success");
+}
+
+/**
+ * Reset editor preferences to defaults
+ */
+function resetEditorPreferencesHandler() {
+    const activeTab = getActiveTab();
+    if (!activeTab) return;
+
+    const defaults = {
+        fontSize: 14,
+        tabSize: 4,
+        lineWrapping: true,
+        lineNumbers: true,
+        bracketMatching: true,
+        autoCloseBrackets: true,
+        theme: "auto"
+    };
+
+    // Update form fields
+    document.getElementById("editor-font-size").value = defaults.fontSize;
+    document.getElementById("editor-tab-size").value = defaults.tabSize;
+    document.getElementById("editor-line-wrapping").checked = defaults.lineWrapping;
+    document.getElementById("editor-line-numbers").checked = defaults.lineNumbers;
+    document.getElementById("editor-bracket-matching").checked = defaults.bracketMatching;
+    document.getElementById("editor-auto-close-brackets").checked = defaults.autoCloseBrackets;
+    document.getElementById("editor-theme").value = defaults.theme;
+
+    updateEditorPreferences(activeTab.id, defaults);
+    showToast("Editor preferences reset to defaults", "info");
+}
+
 function syncConnectionSelectionToActiveTab() {
     const activeTab = getActiveTab();
     if (!activeTab) return;
@@ -527,6 +746,13 @@ function initializeQueryTabs() {
         try {
             savedQueries = JSON.parse(localStorage.getItem("qe_saved_queries") || "{}");
         } catch (_) {}
+
+        // Load editor preferences
+        try {
+            editorPreferences = JSON.parse(localStorage.getItem("qe_editor_preferences") || "{}");
+        } catch (_) {
+            editorPreferences = {};
+        }
 
         const tab = createQueryTab(savedQueries[`tab-1`] || "");
         activeTabId = tab.id;
@@ -672,6 +898,11 @@ function setupEventListeners() {
     });
     document.getElementById("btn-auto-update")?.addEventListener("click", autoUpdate);
     document.getElementById("btn-auto-update-banner")?.addEventListener("click", autoUpdate);
+
+    // Editor preferences event listeners
+    document.getElementById("btn-save-editor-prefs")?.addEventListener("click", saveEditorPreferencesHandler);
+    document.getElementById("btn-reset-editor-prefs")?.addEventListener("click", resetEditorPreferencesHandler);
+
     sidebarToggle?.addEventListener("click", () => sidebar.classList.toggle("hidden"));
     sidebarClose?.addEventListener("click", () => sidebar.classList.add("hidden"));
     sidebarLinks.forEach(link => link.addEventListener("click", event => {
@@ -835,6 +1066,15 @@ function applyTheme(theme) {
         button.title = `Switch to ${value === "dark" ? "light" : "dark"} theme`;
     }
     try { localStorage.setItem("qe-theme", value); } catch (_) {}
+
+    // Update CodeMirror editor themes for all tabs
+    if (window.CodeMirrorEditor) {
+        queryTabs.forEach(tab => {
+            if (tab.editorInstance) {
+                window.CodeMirrorEditor.updateEditorTheme(tab.id, value === "dark");
+            }
+        });
+    }
 }
 function toggleTheme() { applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"); }
 
@@ -1127,8 +1367,15 @@ function useConnection(id) { selectedConnectionIds.add(id); switchView("query-se
 async function executeQuery(tabId) {
     const tab = getTabById(tabId);
     if (!tab) return;
-    
-    const sql = tab.editorElement.value.trim();
+
+    // Get SQL from CodeMirror or fallback textarea
+    let sql = "";
+    if (tab.editorView) {
+        sql = tab.editorView.state.doc.toString().trim();
+    } else if (tab.editorElement) {
+        sql = tab.editorElement.value.trim();
+    }
+
     if (!sql) return showToast("Enter a SQL query first", "warning");
     if (tab.connectionIds.size === 0) return showToast("Select at least one connection", "warning");
     

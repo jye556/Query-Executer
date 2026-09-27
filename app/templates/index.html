@@ -8,7 +8,29 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css?v=v1.0.15">
+
+    <!-- CodeMirror 6 Styles (loaded via JS modules) -->
+    <style>
+        /* CodeMirror base styles */
+        .cm-editor { height: 100%; min-height: 200px; }
+        .cm-content { font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace !important; }
+        .cm-gutters { background-color: var(--bg-surface); border-right: 1px solid var(--border-color); }
+        .cm-lineNumbers .cm-gutterElement { color: var(--text-muted); padding: 0 0.5rem; }
+        .cm-activeLine { background-color: rgba(59, 130, 246, 0.08); }
+        .cm-focused .cm-cursor { border-left-color: var(--accent); }
+        .cm-selectionBackground { background-color: rgba(59, 130, 246, 0.2); }
+
+        /* Theme-aware adjustments */
+        :root[data-theme="light"] .cm-gutters { background-color: var(--bg-card); }
+        :root[data-theme="light"] .cm-activeLine { background-color: rgba(37, 99, 235, 0.1); }
+
+        /* Ensure editor fills container */
+        .editor-container .cm-editor { height: 100%; }
+        .editor-container { min-height: 200px; }
+    </style>
+
     <script defer src="/static/js/app.js?v=v1.0.15"></script>
+    <script defer src="/static/js/editor-highlighting.js?v=v1.0.15"></script>
 </head>
 <body class="dark-theme">
     <div class="app-container">
@@ -155,6 +177,7 @@
                         <nav aria-label="Settings sections" class="settings-tabs">
                             <button type="button" class="settings-tab active" data-settings-tab="account-settings">Account</button>
                             <button type="button" class="settings-tab" data-settings-tab="updates-settings">Updates</button>
+                            <button type="button" class="settings-tab" data-settings-tab="editor-settings">Editor</button>
                         </nav>
                         <section class="settings-tab-panel" id="account-settings">
                             <h3>Account security</h3>
@@ -171,6 +194,71 @@
                             </div>
                             <p id="update-progress" class="update-progress" style="display: none; color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.5rem;"></p>
                             <ol id="release-log" class="release-log"></ol>
+                        </section>
+                        <section class="settings-tab-panel hidden" id="editor-settings">
+                            <h3>SQL Editor Preferences</h3>
+                            <p>Configure the CodeMirror SQL editor behavior and appearance.</p>
+
+                            <div class="settings-form" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem;">
+                                <div class="form-group">
+                                    <label for="editor-font-size" class="form-label">Font Size</label>
+                                    <input type="number" id="editor-font-size" class="form-input" min="10" max="24" value="14" style="max-width: 100px;">
+                                    <small class="form-hint">Editor font size in pixels (10-24)</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="editor-tab-size" class="form-label">Tab Size</label>
+                                    <input type="number" id="editor-tab-size" class="form-input" min="2" max="8" value="4" style="max-width: 100px;">
+                                    <small class="form-hint">Number of spaces for a tab (2-8)</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Line Wrapping</label>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                        <input type="checkbox" id="editor-line-wrapping">
+                                        <span>Enable line wrapping</span>
+                                    </label>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Line Numbers</label>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                        <input type="checkbox" id="editor-line-numbers" checked>
+                                        <span>Show line numbers</span>
+                                    </label>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Bracket Matching</label>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                        <input type="checkbox" id="editor-bracket-matching" checked>
+                                        <span>Highlight matching brackets</span>
+                                    </label>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Auto-close Brackets</label>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                        <input type="checkbox" id="editor-auto-close-brackets" checked>
+                                        <span>Automatically close brackets and quotes</span>
+                                    </label>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Editor Theme</label>
+                                    <select id="editor-theme" class="form-select" style="max-width: 200px;">
+                                        <option value="auto">Auto (follow app theme)</option>
+                                        <option value="dark">Dark (One Dark)</option>
+                                        <option value="light">Light (One Light)</option>
+                                    </select>
+                                    <small class="form-hint">Auto follows the application theme</small>
+                                </div>
+
+                                <div class="form-actions" style="justify-content: flex-start;">
+                                    <button type="button" class="btn btn-primary" id="btn-save-editor-prefs">Save Preferences</button>
+                                    <button type="button" class="btn btn-secondary" id="btn-reset-editor-prefs">Reset to Defaults</button>
+                                </div>
+                            </div>
                         </section>
                     </section>
                 </main>
