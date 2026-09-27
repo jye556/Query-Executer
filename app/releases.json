@@ -1,10 +1,15 @@
 {
-  "version": "1.0.11",
+  "version": "1.0.15",
   "releases": [
     {
-      "version": "1.0.11",
-      "date": "2026-09-25",
+      "version": "1.0.15",
+      "date": "2026-09-26",
       "notes": [
+        "Stable release v1.0.15 incorporating all v1.0.10-v1.0.14 improvements.",
+        "Execute button error fixed with defensive UI binding and null checks.",
+        "Faster connection selection with document fragment and efficient DOM updates.",
+        "Larger login form with improved spacing and input sizing.",
+        "Collapsible sidebar - click toggle to show icons only, hover to expand labels.",
         "Query Results grid lines visible in both light and dark themes.",
         "Edit button to toggle edit mode for result grid.",
         "Apply confirmation dialog showing SQL UPDATE statements before applying.",
