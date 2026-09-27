@@ -1614,6 +1614,84 @@ body {
     font-family: var(--font-mono);
 }
 
+/* CodeMirror Editor Host */
+.cm-editor-host {
+    height: 300px;
+    min-height: 200px;
+    width: 100%;
+}
+
+.cm-editor-host .cm-editor {
+    height: 100%;
+    min-height: 200px;
+}
+
+.cm-editor-host .cm-content {
+    font-family: var(--font-mono) !important;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.cm-editor-host .cm-gutters {
+    background-color: var(--bg-surface);
+    border-right: 1px solid var(--border-color);
+    padding: 0.5rem 0;
+}
+
+.cm-editor-host .cm-lineNumbers .cm-gutterElement {
+    color: var(--text-muted);
+    padding: 0 0.75rem;
+    font-size: 0.75rem;
+}
+
+.cm-editor-host .cm-activeLine {
+    background-color: rgba(59, 130, 246, 0.08);
+}
+
+.cm-editor-host .cm-focused .cm-cursor {
+    border-left-color: var(--accent);
+}
+
+.cm-editor-host .cm-selectionBackground {
+    background-color: rgba(59, 130, 246, 0.2);
+}
+
+/* Theme-aware adjustments for CodeMirror */
+:root[data-theme="light"] .cm-editor-host .cm-gutters {
+    background-color: var(--bg-card);
+}
+
+:root[data-theme="light"] .cm-editor-host .cm-activeLine {
+    background-color: rgba(37, 99, 235, 0.1);
+}
+
+/* SQL syntax highlighting colors - ensure they work in both themes */
+.cm-editor-host .cm-keyword { color: #c586c0; }           /* Purple for keywords */
+.cm-editor-host .cm-operator { color: #d4d4d4; }
+.cm-editor-host .cm-variable { color: #9cdcfe; }
+.cm-editor-host .cm-variable-2 { color: #4ec9b0; }       /* Teal for functions */
+.cm-editor-host .cm-string { color: #ce9178; }           /* Orange for strings */
+.cm-editor-host .cm-number { color: #b5cea8; }           /* Green for numbers */
+.cm-editor-host .cm-comment { color: #6a9955; font-style: italic; }  /* Green for comments */
+.cm-editor-host .cm-type { color: #4ec9b0; }             /* Teal for types */
+.cm-editor-host .cm-builtin { color: #dcdcaa; }          /* Yellow for builtins */
+.cm-editor-host .cm-atom { color: #569cd6; }             /* Blue for atoms */
+.cm-editor-host .cm-meta { color: #9cdcfe; }
+.cm-editor-host .cm-property { color: #9cdcfe; }
+.cm-editor-host .cm-qualifier { color: #d4d4d4; }
+.cm-editor-host .cm-def { color: #dcdcaa; }
+
+:root[data-theme="light"] .cm-editor-host .cm-keyword { color: #af00db; }
+:root[data-theme="light"] .cm-editor-host .cm-operator { color: #333; }
+:root[data-theme="light"] .cm-editor-host .cm-variable { color: #001f9f; }
+:root[data-theme="light"] .cm-editor-host .cm-variable-2 { color: #0070c1; }
+:root[data-theme="light"] .cm-editor-host .cm-string { color: #a31515; }
+:root[data-theme="light"] .cm-editor-host .cm-number { color: #098658; }
+:root[data-theme="light"] .cm-editor-host .cm-comment { color: #008000; }
+:root[data-theme="light"] .cm-editor-host .cm-type { color: #267f99; }
+:root[data-theme="light"] .cm-editor-host .cm-builtin { color: #795e26; }
+:root[data-theme="light"] .cm-editor-host .cm-atom { color: #0070c1; }
+
 /* Quick Queries */
 .quick-queries {
     margin-top: 1.5rem;

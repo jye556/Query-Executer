@@ -1,11 +1,15 @@
 {
-  "version": "1.0.15",
+  "version": "1.1.0",
   "releases": [
     {
-      "version": "1.0.15",
-      "date": "2026-09-26",
+      "version": "1.1.0",
+      "date": "2026-09-27",
       "notes": [
-        "Stable release v1.0.15 incorporating all v1.0.10-v1.0.14 improvements.",
+        "Major release v1.1.0 with Phase 1 editor foundation complete.",
+        "Syntax highlighting with CodeMirror 6 (SQL, themes, line numbers, brackets).",
+        "SQL formatting/beautification with sql-formatter (dialects, selection formatting).",
+        "Query snippets library (CRUD, categories, variables, sharing).",
+        "Inline cell editing UX (keyboard nav, type-aware inputs, undo/redo, validation).",
         "Execute button error fixed with defensive UI binding and null checks.",
         "Faster connection selection with document fragment and efficient DOM updates.",
         "Larger login form with improved spacing and input sizing.",
