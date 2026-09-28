@@ -356,7 +356,7 @@ function updateTabName(tab) {
  * Update query check for tab (uses global function from app.js)
  */
 function updateQueryCheckForTab(tab) {
-    if (window.updateQueryCheckForTab) {
+    if (window.updateQueryCheckForTab && window.updateQueryCheckForTab !== updateQueryCheckForTab) {
         window.updateQueryCheckForTab(tab);
     }
 }
@@ -365,7 +365,7 @@ function updateQueryCheckForTab(tab) {
  * Update query suggestions for tab (uses global function from app.js)
  */
 function updateQuerySuggestionsForTab(tab) {
-    if (window.updateQuerySuggestionsForTab) {
+    if (window.updateQuerySuggestionsForTab && window.updateQuerySuggestionsForTab !== updateQuerySuggestionsForTab) {
         window.updateQuerySuggestionsForTab(tab);
     }
 }
@@ -401,32 +401,63 @@ async function loadCodeMirrorModules() {
             return;
         }
 
-        // Load from CDN using ES modules
-        const modules = await import("https://cdn.jsdelivr.net/npm/@codemirror/view@6/+esm");
-        window.EditorView = modules.EditorView;
-        window.keymap = modules.keymap;
-        window.lineNumbers = modules.lineNumbers;
-        window.bracketMatching = modules.bracketMatching;
-        window.placeholder = modules.placeholder;
-        window.EditorView_theme = modules.theme; // alias
+        // Load from CDN using ES modules with specific versions
+        const version = "6.26.0"; // Specific version that exists on CDN
 
-        const stateModule = await import("https://cdn.jsdelivr.net/npm/@codemirror/state@6/+esm");
-        window.EditorState = stateModule.EditorState;
+        try {
+            const modules = await import(`https://cdn.jsdelivr.net/npm/@codemirror/view@${version}/+esm`);
+            window.EditorView = modules.EditorView;
+            window.keymap = modules.keymap;
+            window.lineNumbers = modules.lineNumbers;
+            window.bracketMatching = modules.bracketMatching;
+            window.placeholder = modules.placeholder;
+            window.EditorView_theme = modules.theme; // alias
+        } catch (e) {
+            console.error("Failed to load @codemirror/view:", e);
+            throw e;
+        }
 
-        const basicSetupModule = await import("https://cdn.jsdelivr.net/npm/@codemirror/basic-setup@6/+esm");
-        window.basicSetup = basicSetupModule.basicSetup;
-        window.closeBrackets = basicSetupModule.closeBrackets;
-        window.indentWithTab = basicSetupModule.indentWithTab;
+        try {
+            const stateModule = await import(`https://cdn.jsdelivr.net/npm/@codemirror/state@${version}/+esm`);
+            window.EditorState = stateModule.EditorState;
+        } catch (e) {
+            console.error("Failed to load @codemirror/state:", e);
+            throw e;
+        }
 
-        const langSqlModule = await import("https://cdn.jsdelivr.net/npm/@codemirror/lang-sql@6/+esm");
-        window.sql = langSqlModule.sql;
+        try {
+            const basicSetupModule = await import(`https://cdn.jsdelivr.net/npm/@codemirror/basic-setup@${version}/+esm`);
+            window.basicSetup = basicSetupModule.basicSetup;
+            window.closeBrackets = basicSetupModule.closeBrackets;
+            window.indentWithTab = basicSetupModule.indentWithTab;
+        } catch (e) {
+            console.error("Failed to load @codemirror/basic-setup:", e);
+            throw e;
+        }
 
-        const themeOneDarkModule = await import("https://cdn.jsdelivr.net/npm/@codemirror/theme-one-dark@6/+esm");
-        window.oneDark = themeOneDarkModule.oneDark;
+        try {
+            const langSqlModule = await import(`https://cdn.jsdelivr.net/npm/@codemirror/lang-sql@${version}/+esm`);
+            window.sql = langSqlModule.sql;
+        } catch (e) {
+            console.error("Failed to load @codemirror/lang-sql:", e);
+            throw e;
+        }
 
-        // For light theme, we'll create a custom one based on one-light or use a simple theme
-        const themeOneLightModule = await import("https://cdn.jsdelivr.net/npm/@codemirror/theme-one-light@6/+esm");
-        window.oneLight = themeOneLightModule.oneLight;
+        try {
+            const themeOneDarkModule = await import(`https://cdn.jsdelivr.net/npm/@codemirror/theme-one-dark@${version}/+esm`);
+            window.oneDark = themeOneDarkModule.oneDark;
+        } catch (e) {
+            console.error("Failed to load @codemirror/theme-one-dark:", e);
+            throw e;
+        }
+
+        try {
+            const themeOneLightModule = await import(`https://cdn.jsdelivr.net/npm/@codemirror/theme-one-light@${version}/+esm`);
+            window.oneLight = themeOneLightModule.oneLight;
+        } catch (e) {
+            console.error("Failed to load @codemirror/theme-one-light:", e);
+            throw e;
+        }
 
         codeMirrorLoaded = true;
     })();

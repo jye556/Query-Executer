@@ -26,6 +26,9 @@ let tabCounter = 0;
 // Editor preferences (loaded from localStorage)
 let editorPreferences = {};
 
+// Parameter panel state
+let parameterPanelVisible = false;
+
 let btnShowAddConnection, addConnectionFormContainer, addConnectionForm,
     btnCancelConnection, connTogglePwdBtn, connPwdInput, connectionsListContainer,
     queryLimitInput, connGroupSelect, connNewGroupInput, queryGroupFilter, queryDbTypeFilter, queryDbSearch,
@@ -94,7 +97,12 @@ function createQueryTab(initialQuery = "") {
         currentEditContext: null,
         editorView: null,
         editorInstance: null,
-        editorContainer: null
+        editorContainer: null,
+        parameters: {},
+        parametersPanel: null,
+        parametersList: null,
+        btnToggleParameters: null,
+        btnRefreshParameters: null
     };
     queryTabs.push(tab);
     return tab;
@@ -105,7 +113,12 @@ function getActiveTab() {
 }
 
 function getTabById(tabId) {
-    return queryTabs.find(t => t.id === tabId);
+    if (!tabId) return null;
+    const found = queryTabs.find(t => t && t.id === tabId);
+    if (!found) {
+        console.error(`[getTabById] Tab not found: "${tabId}". Available:`, queryTabs.map(t => t?.id));
+    }
+    return found;
 }
 
 function renderQueryTabs() {
@@ -121,15 +134,27 @@ function renderQueryTabs() {
 }
 
 function renderTabPanels() {
-    if (!queryTabPanels) return;
+    console.log(`[renderTabPanels] activeTabId: ${activeTabId}, queryTabs:`, queryTabs.map(t => t.id));
+    if (!queryTabPanels) {
+        console.error(`[renderTabPanels] queryTabPanels not found!`);
+        return;
+    }
     queryTabPanels.innerHTML = queryTabs.map(tab => `
         <div class="query-tab-panel ${tab.id === activeTabId ? "active" : ""}" data-tab-id="${tab.id}" role="tabpanel">
             ${renderTabPanelContent(tab)}
         </div>
     `).join("");
-    
+
     // Re-bind events for the active panel
-    bindTabPanelEvents(getActiveTab());
+    const activeTab = getActiveTab();
+    console.log(`[renderTabPanels] Binding events for activeTab:`, activeTab?.id);
+    if (activeTab) {
+        console.log(`[renderTabPanels] Checking DOM elements for tab ${activeTab.id}:`);
+        console.log(`  btn-execute-query-${activeTab.id}:`, document.getElementById(`btn-execute-query-${activeTab.id}`));
+        console.log(`  query-editor-${activeTab.id}:`, document.getElementById(`query-editor-${activeTab.id}`));
+        console.log(`  results-container-${activeTab.id}:`, document.getElementById(`results-container-${activeTab.id}`));
+    }
+    bindTabPanelEvents(activeTab);
 }
 
 function renderTabPanelContent(tab) {
@@ -140,11 +165,30 @@ function renderTabPanelContent(tab) {
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     <h2>SQL Query Editor</h2>
                 </div>
-                <button type="button" class="btn btn-accent btn-large" id="btn-execute-query-${tab.id}" data-tab-id="${tab.id}">
-                    <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                    <span id="btn-execute-text-${tab.id}">Execute</span>
-                    <div class="btn-spinner hidden" id="execute-spinner-${tab.id}"></div>
-                </button>
+                <div class="editor-header-actions">
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-toggle-parameters-${tab.id}" title="Toggle Parameters Panel" aria-label="Toggle Parameters Panel">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                        <span class="btn-text">Parameters</span>
+                    </button>
+                    <button type="button" class="btn btn-accent btn-large" id="btn-execute-query-${tab.id}" data-tab-id="${tab.id}">
+                        <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        <span id="btn-execute-text-${tab.id}">Execute</span>
+                        <div class="btn-spinner hidden" id="execute-spinner-${tab.id}"></div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Parameters Panel -->
+            <div class="parameters-panel hidden" id="parameters-panel-${tab.id}" role="region" aria-label="Query Parameters">
+                <div class="parameters-header">
+                    <h3>Query Parameters</h3>
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-parameters-${tab.id}" title="Auto-detect parameters">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    </button>
+                </div>
+                <div class="parameters-list" id="parameters-list-${tab.id}">
+                    <p class="parameters-empty">No parameters detected. Click "Auto-detect" or enter a query with bind variables.</p>
+                </div>
             </div>
 
             <div class="editor-pane">
@@ -171,7 +215,7 @@ function renderTabPanelContent(tab) {
         <section class="grid-card results-card">
             <div class="card-header">
                 <div class="header-title">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="1"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
                     <h2>Query Results</h2>
                 </div>
                 <div class="results-meta">
@@ -236,6 +280,17 @@ function bindTabPanelEvents(tab) {
     tab.btnRevertEdits = document.getElementById(`btn-revert-result-edits-${tab.id}`);
     tab.editActions = document.getElementById(`result-edit-actions-${tab.id}`);
 
+    // Parameter panel elements
+    tab.parametersPanel = document.getElementById(`parameters-panel-${tab.id}`);
+    tab.parametersList = document.getElementById(`parameters-list-${tab.id}`);
+    tab.btnToggleParameters = document.getElementById(`btn-toggle-parameters-${tab.id}`);
+    tab.btnRefreshParameters = document.getElementById(`btn-refresh-parameters-${tab.id}`);
+
+    // Initialize parameter values storage for this tab
+    if (!tab.parameters) {
+        tab.parameters = {};
+    }
+
     // Initialize CodeMirror editor if not already created
     if (!tab.editorInstance && tab.editorHost && window.CodeMirrorEditor) {
         const isDarkTheme = document.documentElement.dataset.theme === "dark";
@@ -281,8 +336,16 @@ function bindTabPanelEvents(tab) {
         }
     }
 
-    // Execute button
-    tab.executeBtn?.addEventListener("click", () => executeQuery(tab.id));
+    // Execute button - bind directly to current tab object to avoid lookup issues
+    const boundTab = tab;
+    console.log(`[bindTabPanelEvents] Binding executeBtn for tab ${tab.id}:`, tab.executeBtn);
+    tab.executeBtn?.addEventListener("click", () => {
+        console.log(`[executeBtn] Clicked for tab ${boundTab.id}`);
+        executeQuery(boundTab.id);
+    });
+    if (!tab.executeBtn) {
+        console.error(`[bindTabPanelEvents] executeBtn NOT FOUND for tab ${tab.id}`);
+    }
 
     // Clear editor
     document.getElementById(`btn-clear-editor-${tab.id}`)?.addEventListener("click", () => {
@@ -296,9 +359,13 @@ function bindTabPanelEvents(tab) {
         }
     });
 
-    // Format SQL (placeholder)
+    // Format SQL
     document.getElementById(`btn-format-sql-${tab.id}`)?.addEventListener("click", () => {
-        showToast("SQL formatting not yet implemented", "info");
+        if (window.SqlFormatter) {
+            window.SqlFormatter.formatEditorSql(tab.id);
+        } else {
+            showToast("SQL formatter not loaded", "warning");
+        }
     });
 
     // Apply edits
@@ -316,8 +383,27 @@ function bindTabPanelEvents(tab) {
         if (btn) insertSuggestionForTab(tab, btn.dataset.suggestion);
     });
 
+    // Parameter panel toggle
+    tab.btnToggleParameters?.addEventListener("click", () => toggleParametersPanel(tab));
+
+    // Refresh parameters (auto-detect)
+    tab.btnRefreshParameters?.addEventListener("click", () => refreshParameters(tab));
+
     // Initialize query check
     updateQueryCheckForTab(tab);
+
+    // Initialize parameters panel if query has parameters
+    if (tab.query && tab.query.trim()) {
+        setTimeout(() => refreshParameters(tab), 100);
+    }
+
+    // Initialize autocomplete if connection is selected
+    if (tab.connectionIds.size > 0 && window.AutocompleteManager) {
+        setTimeout(() => {
+            const connectionId = Array.from(tab.connectionIds)[0];
+            window.AutocompleteManager.initializeAutocomplete(tab);
+        }, 200);
+    }
 }
 
 /**
@@ -512,6 +598,7 @@ function insertSuggestionForTab(tab, value) {
 }
 
 function switchTab(tabId) {
+    console.log(`[switchTab] Switching to tab: ${tabId}, current: ${activeTabId}`);
     if (tabId === activeTabId) return;
     activeTabId = tabId;
     renderQueryTabs();
@@ -524,6 +611,10 @@ function switchTab(tabId) {
     const activeTab = getActiveTab();
     if (activeTab) {
         restoreTabResults(activeTab);
+        // Refresh parameters panel for the active tab
+        if (activeTab.query && activeTab.query.trim()) {
+            setTimeout(() => refreshParameters(activeTab), 100);
+        }
     }
 
     // Focus editor for the active tab
@@ -570,6 +661,10 @@ function addQueryTab() {
     renderQueryTabs();
     renderTabPanels();
     syncConnectionSelectionToActiveTab();
+
+    // Bind events for the new tab
+    console.log(`[addQueryTab] Created tab ${tab.id}, binding events...`);
+    bindTabPanelEvents(tab);
 
     // Focus editor after a brief delay to allow CodeMirror to initialize
     setTimeout(() => {
@@ -716,6 +811,212 @@ function resetEditorPreferencesHandler() {
 
     updateEditorPreferences(activeTab.id, defaults);
     showToast("Editor preferences reset to defaults", "info");
+}
+
+/**
+ * Toggle the parameters panel visibility
+ */
+function toggleParametersPanel(tab) {
+    if (!tab.parametersPanel || !tab.btnToggleParameters) return;
+
+    const isHidden = tab.parametersPanel.classList.contains("hidden");
+    if (isHidden) {
+        tab.parametersPanel.classList.remove("hidden");
+        tab.btnToggleParameters.classList.add("active");
+        tab.btnToggleParameters.setAttribute("aria-expanded", "true");
+    } else {
+        tab.parametersPanel.classList.add("hidden");
+        tab.btnToggleParameters.classList.remove("active");
+        tab.btnToggleParameters.setAttribute("aria-expanded", "false");
+    }
+}
+
+/**
+ * Refresh parameters by auto-detecting from the current query
+ */
+async function refreshParameters(tab) {
+    if (!tab.parametersList) return;
+
+    // Get current query from editor
+    let sql = "";
+    if (tab.editorView) {
+        sql = tab.editorView.state.doc.toString().trim();
+    } else if (tab.editorElement) {
+        sql = tab.editorElement.value.trim();
+    } else {
+        sql = tab.query || "";
+    }
+
+    if (!sql) {
+        tab.parametersList.innerHTML = '<p class="parameters-empty">No query entered. Enter a SQL query with bind variables to detect parameters.</p>';
+        return;
+    }
+
+    // Need a connection to detect parameters
+    if (tab.connectionIds.size === 0) {
+        tab.parametersList.innerHTML = '<p class="parameters-empty">Select a connection first to detect parameters.</p>';
+        return;
+    }
+
+    const connectionId = tab.connectionIds.values().next().value;
+
+    try {
+        // Call API to parse parameters
+        const result = await apiFetch("/api/query/parameters", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ connection_id: connectionId, query: sql })
+        });
+
+        renderParametersPanel(tab, result.parameters);
+    } catch (error) {
+        console.error("Failed to detect parameters:", error);
+        tab.parametersList.innerHTML = '<p class="parameters-empty">Could not detect parameters. Enter parameters manually.</p>';
+    }
+}
+
+/**
+ * Render the parameters panel with detected parameters
+ */
+function renderParametersPanel(tab, parameters) {
+    if (!tab.parametersList) return;
+
+    if (!parameters || parameters.length === 0) {
+        tab.parametersList.innerHTML = '<p class="parameters-empty">No parameters detected in the query. Supported formats: :name, $1, ?, @name, %(name)s</p>';
+        return;
+    }
+
+    let html = '';
+    parameters.forEach((param, index) => {
+        const paramName = param.name || param.display_name;
+        const displayName = param.display_name || param.name;
+        const style = param.style || 'unknown';
+        const occurrences = param.occurrences || 1;
+
+        // Get existing value or default
+        const existingValue = tab.parameters[paramName] ?? '';
+
+        // Determine input type based on parameter name/pattern
+        const inputType = inferInputType(paramName, param);
+        const inputHtml = createParameterInput(paramName, existingValue, inputType, param);
+
+        html += `
+            <div class="parameter-item" data-param-name="${escapeHtml(paramName)}">
+                <div class="parameter-item-header">
+                    <span class="parameter-name">
+                        ${escapeHtml(displayName)}
+                        <span class="parameter-style-badge">${escapeHtml(style)}</span>
+                    </span>
+                    <span class="parameter-occurrences">${occurrences} occurrence${occurrences !== 1 ? 's' : ''}</span>
+                </div>
+                <div class="parameter-input-wrapper">
+                    ${inputHtml}
+                </div>
+            </div>
+        `;
+    });
+
+    tab.parametersList.innerHTML = html;
+
+    // Bind input change events
+    tab.parametersList.querySelectorAll('.parameter-input, .parameter-select').forEach(input => {
+        input.addEventListener('change', (e) => {
+            const paramItem = e.target.closest('.parameter-item');
+            if (paramItem) {
+                const paramName = paramItem.dataset.paramName;
+                tab.parameters[paramName] = e.target.value;
+                // Clear error state
+                e.target.classList.remove('parameter-error');
+                const errorEl = paramItem.querySelector('.parameter-error-message');
+                if (errorEl) errorEl.remove();
+            }
+        });
+        input.addEventListener('input', (e) => {
+            const paramItem = e.target.closest('.parameter-item');
+            if (paramItem) {
+                const paramName = paramItem.dataset.paramName;
+                tab.parameters[paramName] = e.target.value;
+            }
+        });
+    });
+}
+
+/**
+ * Infer input type based on parameter name
+ */
+function inferInputType(paramName, param) {
+    const name = paramName.toLowerCase();
+
+    // Date/time patterns
+    if (name.includes('date') || name.includes('time') || name.includes('created_at') || name.includes('updated_at') || name.includes('timestamp')) {
+        return 'datetime-local';
+    }
+
+    // Boolean patterns
+    if (name.includes('is_') || name.includes('has_') || name.includes('enabled') || name.includes('active') || name.includes('flag') || name.startsWith('is') || name.startsWith('has')) {
+        return 'boolean';
+    }
+
+    // Enum-like patterns (status, type, category, etc.)
+    if (name.includes('status') || name.includes('type') || name.includes('category') || name.includes('role') || name.includes('state')) {
+        return 'enum';
+    }
+
+    // Email
+    if (name.includes('email')) {
+        return 'email';
+    }
+
+    // Number patterns
+    if (name.includes('id') || name.includes('count') || name.includes('num') || name.includes('amount') || name.includes('price') || name.includes('qty') || name.includes('quantity')) {
+        return 'number';
+    }
+
+    // Default to text
+    return 'text';
+}
+
+/**
+ * Create parameter input HTML based on type
+ */
+function createParameterInput(paramName, value, type, param) {
+    const safeName = escapeHtml(paramName);
+    const safeValue = escapeHtml(String(value ?? ''));
+
+    switch (type) {
+        case 'datetime-local':
+            return `<label>Value: <input type="datetime-local" class="parameter-input" name="${safeName}" value="${safeValue}"></label>`;
+        case 'date':
+            return `<label>Value: <input type="date" class="parameter-input" name="${safeName}" value="${safeValue}"></label>`;
+        case 'time':
+            return `<label>Value: <input type="time" class="parameter-input" name="${safeName}" value="${safeValue}"></label>`;
+        case 'boolean':
+            return `<label>Value: <select class="parameter-input parameter-select" name="${safeName}"><option value="">-- Select --</option><option value="true"${value === 'true' || value === true ? ' selected' : ''}>True</option><option value="false"${value === 'false' || value === false ? ' selected' : ''}>False</option></select></label>`;
+        case 'enum':
+            // For enum, we'd need to fetch actual enum values from DB; for now use text with suggestions
+            return `<label>Value: <input type="text" class="parameter-input" name="${safeName}" value="${safeValue}" placeholder="Enter value" list="enum-${safeName}"><datalist id="enum-${safeName}"><option value="active"><option value="inactive"><option value="pending"><option value="completed"></datalist></label>`;
+        case 'number':
+            return `<label>Value: <input type="number" class="parameter-input" name="${safeName}" value="${safeValue}" step="any"></label>`;
+        case 'email':
+            return `<label>Value: <input type="email" class="parameter-input" name="${safeName}" value="${safeValue}" placeholder="email@example.com"></label>`;
+        default:
+            return `<label>Value: <input type="text" class="parameter-input" name="${safeName}" value="${safeValue}" placeholder="Enter value"></label>`;
+    }
+}
+
+/**
+ * Get parameters object for query execution
+ */
+function getTabParameters(tab) {
+    if (!tab.parameters) return {};
+    // Filter out empty values
+    const params = {};
+    for (const [key, value] of Object.entries(tab.parameters)) {
+        if (value !== '' && value !== null && value !== undefined) {
+            params[key] = value;
+        }
+    }
+    return params;
 }
 
 function syncConnectionSelectionToActiveTab() {
@@ -940,7 +1241,18 @@ function setupEventListeners() {
     document.getElementById("btn-add-group")?.addEventListener("click", () => showGroupForm());
     document.getElementById("btn-cancel-group")?.addEventListener("click", () => document.getElementById("admin-group-form").classList.add("hidden"));
     document.getElementById("admin-group-form")?.addEventListener("submit", saveGroupForm);
-    
+
+    // Snippets form event listeners
+    document.getElementById("btn-new-snippet")?.addEventListener("click", () => {
+        if (window.SnippetsManager) window.SnippetsManager.showSnippetForm(null);
+    });
+    document.getElementById("btn-cancel-snippet")?.addEventListener("click", () => {
+        if (window.SnippetsManager) window.SnippetsManager.cancelSnippetForm();
+    });
+    document.getElementById("snippet-form")?.addEventListener("submit", (e) => {
+        if (window.SnippetsManager) window.SnippetsManager.saveSnippetForm(e);
+    });
+
     // Tab close buttons (delegated)
     queryTabsContainer?.addEventListener("click", e => {
         const closeBtn = e.target.closest("[data-close-tab]");
@@ -1120,6 +1432,9 @@ function switchView(viewId) {
     currentView = viewId;
     if (window.innerWidth <= 768) sidebar.classList.add("hidden");
     if (viewId === "history-section") fetchHistory();
+    if (viewId === "snippets-section" && window.SnippetsManager) {
+        window.SnippetsManager.loadSnippets().then(() => window.SnippetsManager.renderSnippetsPanel());
+    }
     if (viewId === "users-section" && currentUser?.role === "admin") fetchUsers();
     if (viewId === "groups-section" && currentUser?.role === "admin") renderGroupsAdmin();
     if (viewId === "settings-section") checkForUpdates();
@@ -1221,9 +1536,13 @@ async function renderQueryConnectionPanel() {
     if (!items.length) { connectionsPanelList.innerHTML = '<p class="panel-empty">No authorized connections match these filters.</p>'; return; }
     if (items.length === 1 && selectedConnectionIds.size === 0) {
         selectedConnectionIds.add(items[0].id);
-        await ensureSchemaMetadata(items[0].id);
+        // Don't await - trigger schema load in background
+        ensureSchemaMetadata(items[0].id);
     }
-    if (selectedConnectionIds.size === 1) await ensureSchemaMetadata(Array.from(selectedConnectionIds)[0]);
+    if (selectedConnectionIds.size === 1) {
+        // Don't await - trigger schema load in background
+        ensureSchemaMetadata(Array.from(selectedConnectionIds)[0]);
+    }
     items.forEach(connection => {
         const item = document.createElement("button"); item.type = "button"; item.className = `connection-panel-item${selectedConnectionIds.has(connection.id) ? " selected" : ""}`;
         item.innerHTML = `<span class="connection-panel-info"><span class="connection-panel-name">${escapeHtml(connection.name)}</span></span><span class="connection-panel-check">${selectedConnectionIds.has(connection.id) ? "✓" : ""}</span>`;
@@ -1365,8 +1684,23 @@ async function deleteConnection(id) { if (!confirm("Delete this connection?")) r
 function useConnection(id) { selectedConnectionIds.add(id); switchView("query-section"); renderQueryConnectionPanel(); syncConnectionSelectionToActiveTab(); }
 
 async function executeQuery(tabId) {
+    console.log(`[executeQuery] Called with tabId: ${tabId}`);
     const tab = getTabById(tabId);
-    if (!tab) return;
+    if (!tab) {
+        console.error(`[executeQuery] Tab not found: ${tabId}`);
+        // Try to get active tab as fallback
+        const activeTab = getActiveTab();
+        if (activeTab) {
+            console.log(`[executeQuery] Falling back to active tab: ${activeTab.id}`);
+            return executeQuery(activeTab.id);
+        }
+        return;
+    }
+
+    console.log(`[executeQuery] Tab found:`, tab);
+    console.log(`[executeQuery] tab.connectionIds:`, tab.connectionIds);
+    console.log(`[executeQuery] tab.editorView:`, tab.editorView);
+    console.log(`[executeQuery] tab.editorElement:`, tab.editorElement);
 
     // Get SQL from CodeMirror or fallback textarea
     let sql = "";
@@ -1376,9 +1710,11 @@ async function executeQuery(tabId) {
         sql = tab.editorElement.value.trim();
     }
 
+    console.log(`[executeQuery] SQL: "${sql}"`);
+
     if (!sql) return showToast("Enter a SQL query first", "warning");
     if (tab.connectionIds.size === 0) return showToast("Select at least one connection", "warning");
-    
+
     tab.executeBtn.disabled = true;
     tab.executeText.textContent = "Executing...";
     tab.executeSpinner.classList.remove("hidden");
@@ -1388,11 +1724,14 @@ async function executeQuery(tabId) {
     tab.errorContainer.classList.add("hidden");
     tab.editActions.classList.add("hidden");
     tab.btnExportCsv.disabled = true;
-    
+
     const limit = parseInt(queryLimitInput?.value) || 1000;
     const connIds = Array.from(tab.connectionIds);
     const isMulti = connIds.length > 1;
-    
+
+    // Get parameters for this tab
+    const parameters = getTabParameters(tab);
+
     try {
         if (isMulti) {
             // Multi-connection execution
@@ -1402,7 +1741,7 @@ async function executeQuery(tabId) {
                     const result = await apiFetch("/api/query", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ connection_id: connId, query: sql, limit })
+                        body: JSON.stringify({ connection_id: connId, query: sql, limit, parameters })
                     });
                     results.push({ connectionId: connId, success: true, data: result });
                 } catch (error) {
@@ -1416,7 +1755,7 @@ async function executeQuery(tabId) {
             const result = await apiFetch("/api/query", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ connection_id: connId, query: sql, limit })
+                body: JSON.stringify({ connection_id: connId, query: sql, limit, parameters })
             });
             renderSingleResult(tab, connId, result);
         }

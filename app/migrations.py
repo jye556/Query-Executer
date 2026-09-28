@@ -241,6 +241,37 @@ def _create_tables(cur: Any, postgres: bool) -> None:
         ):
             _add_column(cur, postgres, "query_history", column, definition)
 
+    # Snippets table
+    if not _table_exists(cur, postgres, "snippets"):
+        cur.execute(
+            f'''CREATE TABLE snippets (
+                id VARCHAR(50) PRIMARY KEY,
+                name VARCHAR(200) NOT NULL,
+                category VARCHAR(100),
+                description VARCHAR(500),
+                sql TEXT NOT NULL,
+                is_favorite {default_bool},
+                is_shared {default_bool},
+                user_id BIGINT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )'''
+        )
+    else:
+        for column, definition in (
+            ("id", "VARCHAR(50)"),
+            ("name", "VARCHAR(200)"),
+            ("category", "VARCHAR(100)"),
+            ("description", "VARCHAR(500)"),
+            ("sql", "TEXT"),
+            ("is_favorite", default_bool),
+            ("is_shared", default_bool),
+            ("user_id", "BIGINT"),
+            ("created_at", "TIMESTAMP"),
+            ("updated_at", "TIMESTAMP"),
+        ):
+            _add_column(cur, postgres, "snippets", column, definition)
+
 
 def _create_index(cur: Any, sql: str) -> None:
     # All index statements are static and already contain IF NOT EXISTS.  A

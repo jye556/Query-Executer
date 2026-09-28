@@ -34,6 +34,7 @@
     <script defer src="/static/js/sql-formatter.js?v=v1.1.0"></script>
     <script defer src="/static/js/snippets.js?v=v1.1.0"></script>
     <script defer src="/static/js/inline-editing.js?v=v1.1.0"></script>
+    <script defer src="/static/js/autocomplete.js?v=v1.1.0"></script>
 </head>
 <body class="dark-theme">
     <div class="app-container">
@@ -111,6 +112,12 @@
                         </li>
                         <li>
                             <a href="#" class="sidebar-link" data-view="settings-section" aria-label="Open application settings">Settings</a>
+                        </li>
+                        <li>
+                            <a href="#" class="sidebar-link" data-view="snippets-section">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
+                                Snippets
+                            </a>
                         </li>
                         <li>
                             <a href="#" class="sidebar-link" data-view="history-section">
@@ -355,6 +362,57 @@
                             <div class="loading-spinner-container">
                                 <div class="spinner"></div>
                                 <p>Loading connections...</p>
+                            </div>
+                        </div>
+                    </section>
+                </main>
+
+                <!-- VIEW: SNIPPETS -->
+                <main class="app-view hidden" id="snippets-section">
+                    <section class="grid-card snippets-card">
+                        <div class="card-header">
+                            <div class="header-title">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
+                                <h2>Query Snippets</h2>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" id="btn-new-snippet">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                New Snippet
+                            </button>
+                        </div>
+                        <div class="snippets-form-container hidden" id="snippet-form-container">
+                            <form id="snippet-form" class="snippet-form">
+                                <input type="hidden" id="snippet-form-id">
+                                <div class="form-group">
+                                    <label for="snippet-name">Name</label>
+                                    <input type="text" id="snippet-name" required maxlength="200" placeholder="e.g., Select all users">
+                                </div>
+                                <div class="form-group">
+                                    <label for="snippet-category">Category</label>
+                                    <input type="text" id="snippet-category" maxlength="100" placeholder="e.g., SELECT, INSERT, Admin">
+                                </div>
+                                <div class="form-group">
+                                    <label for="snippet-description">Description</label>
+                                    <textarea id="snippet-description" rows="2" placeholder="Optional description"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label for="snippet-sql">SQL Query</label>
+                                    <textarea id="snippet-sql" class="sql-textarea" rows="6" required placeholder="SELECT * FROM users WHERE id = {{id}};"></textarea>
+                                </div>
+                                <div class="form-group checkbox-group">
+                                    <label><input type="checkbox" id="snippet-favorite"> Favorite</label>
+                                    <label><input type="checkbox" id="snippet-shared"> Shared</label>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-secondary" id="btn-cancel-snippet">Cancel</button>
+                                    <button type="submit" class="btn btn-accent" id="btn-submit-snippet">Save Snippet</button>
+                                </div>
+                            </form>
+                        </div>
+                        <div id="snippets-panel" data-active-category="all">
+                            <div class="loading-spinner-container">
+                                <div class="spinner"></div>
+                                <p>Loading snippets...</p>
                             </div>
                         </div>
                     </section>

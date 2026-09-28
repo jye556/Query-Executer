@@ -76,7 +76,8 @@ function enableEditMode(container, tab) {
             cell.addEventListener("blur", onCellBlur);
             cell.addEventListener("keydown", onCellKeyDown);
             cell.addEventListener("input", onCellInput);
-        });
+        }
+    });
 
     // Add visual indicator
     container.classList.add("edit-mode-active");
@@ -226,7 +227,7 @@ function onCellKeyDown(event) {
     const cellIndex = Array.from(cells || []).indexOf(cell);
 
     switch (event.key) {
-        case "Tab":
+        case "Tab": {
             event.preventDefault();
             if (event.shiftKey) {
                 // Previous cell
@@ -238,14 +239,16 @@ function onCellKeyDown(event) {
                 if (nextCell) nextCell.focus();
             }
             break;
+        }
 
-        case "Enter":
+        case "Enter": {
             event.preventDefault();
             // Save and move to next cell
             cell.blur();
             const nextCell = cells[cellIndex + 1];
             if (nextCell) nextCell.focus();
             break;
+        }
 
         case "Escape":
             event.preventDefault();
@@ -256,7 +259,7 @@ function onCellKeyDown(event) {
             cell.blur();
             break;
 
-        case "ArrowUp":
+        case "ArrowUp": {
             event.preventDefault();
             const prevRow = row?.previousElementSibling;
             if (prevRow) {
@@ -264,8 +267,9 @@ function onCellKeyDown(event) {
                 if (prevCell) prevCell.focus();
             }
             break;
+        }
 
-        case "ArrowDown":
+        case "ArrowDown": {
             event.preventDefault();
             const nextRow = row?.nextElementSibling;
             if (nextRow) {
@@ -273,18 +277,21 @@ function onCellKeyDown(event) {
                 if (nextCell) nextCell.focus();
             }
             break;
+        }
 
-        case "ArrowLeft":
+        case "ArrowLeft": {
             event.preventDefault();
             const prevCell = cells[cellIndex - 1];
             if (prevCell) prevCell.focus();
             break;
+        }
 
-        case "ArrowRight":
+        case "ArrowRight": {
             event.preventDefault();
             const nextCell = cells[cellIndex + 1];
             if (nextCell) nextCell.focus();
             break;
+        }
 
         case "z":
             if (event.ctrlKey || event.metaKey) {
