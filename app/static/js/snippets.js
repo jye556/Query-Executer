@@ -5,6 +5,18 @@
  * Provides CRUD operations for query snippets with categories, tags, and sharing
  */
 
+function escapeHtml(value) {
+    const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
+    return String(value ?? "").replace(/[&<>"']/g, char => map[char]);
+}
+
+
+function getCurrentUser() {
+    if (typeof window !== "undefined" && window.currentUser) return window.currentUser;
+    if (typeof currentUser !== "undefined") return currentUser;
+    return null;
+}
+
 // State
 let snippets = [];
 let snippetCategories = [];
@@ -19,7 +31,7 @@ const SNIPPETS_API = "/api/snippets";
 async function loadSnippets() {
     try {
         const response = await apiFetch(SNIPPETS_API);
-        snippets = response.snippets || [];
+        snippets = Array.isArray(response) ? response : (response.snippets || []);
         snippetCategories = [...new Set(snippets.map(s => s.category).filter(Boolean))];
         snippetsLoaded = true;
         return snippets;
@@ -175,6 +187,9 @@ function insertSnippet(snippetId) {
     }
     
     showToast(`Inserted snippet: ${snippet.name}`, "success");
+    if (typeof switchView === "function") {
+        switchView("query-section");
+    }
 }
 
 /**
@@ -226,12 +241,15 @@ function renderSnippetsPanel() {
                         <div class="snippet-preview">${escapeHtml(snippet.sql.substring(0, 100))}${snippet.sql.length > 100 ? "..." : ""}</div>
                         <div class="snippet-actions">
                             <button type="button" class="btn btn-icon btn-sm" data-action="insert" title="Insert into editor">➕</button>
-                            ${currentUser?.role === "admin" || snippet.user_id === currentUser?.id ? `
-                                <button type="button" class="btn btn-icon btn-sm" data-action="edit" title="Edit snippet">✏️</button>
-                                <button type="button" class="btn btn-icon btn-sm ${snippet.is_favorite ? "active" : ""}" data-action="favorite" title="${snippet.is_favorite ? "Remove from favorites" : "Add to favorites"}">⭐</button>
-                                <button type="button" class="btn btn-icon btn-sm ${snippet.is_shared ? "active" : ""}" data-action="share" title="${snippet.is_shared ? "Unshare" : "Share"}">🔗</button>
-                                <button type="button" class="btn btn-icon btn-sm danger" data-action="delete" title="Delete">🗑️</button>
-                            ` : ''}
+                            ${(() => {
+                                const user = getCurrentUser();
+                                return (user?.role === "admin" || (user && snippet.user_id === user.id)) ? `
+                                    <button type="button" class="btn btn-icon btn-sm" data-action="edit" title="Edit snippet">✏️</button>
+                                    <button type="button" class="btn btn-icon btn-sm ${snippet.is_favorite ? "active" : ""}" data-action="favorite" title="${snippet.is_favorite ? "Remove from favorites" : "Add to favorites"}">⭐</button>
+                                    <button type="button" class="btn btn-icon btn-sm ${snippet.is_shared ? "active" : ""}" data-action="share" title="${snippet.is_shared ? "Unshare" : "Share"}">🔗</button>
+                                    <button type="button" class="btn btn-icon btn-sm danger" data-action="delete" title="Delete">🗑️</button>
+                                ` : '';
+                            })()}
                         </div>
                     </div>
                 `).join("")}
@@ -275,34 +293,41 @@ function renderSnippetsPanel() {
 /**
  * Show snippet form for create/edit
  */
-function showSnippetForm(snippet = null) {
+function showSnippetForm(snippetOrId = null) {
+    const snippet = (typeof snippetOrId === "string") ? snippets.find(s => s.id === snippetOrId) : snippetOrId;
     const container = document.getElementById("snippet-form-container");
     if (!container) return;
 
     container.classList.remove("hidden");
-    container.dataset.editId = snippet?.id || "";
+    const editId = snippet?.id || "";
+    container.dataset.editId = editId;
+    const hiddenIdEl = document.getElementById("snippet-form-id");
+    if (hiddenIdEl) hiddenIdEl.value = editId;
 
     const form = document.getElementById("snippet-form");
     if (!form) return;
 
     form.reset();
-    document.getElementById("snippet-form-title").textContent = snippet ? "Edit Snippet" : "New Snippet";
-    document.getElementById("btn-submit-snippet").textContent = snippet ? "Update Snippet" : "Save Snippet";
+    const titleEl = document.getElementById("snippet-form-title");
+    if (titleEl) titleEl.textContent = snippet ? "Edit Snippet" : "New Snippet";
+    const submitBtn = document.getElementById("btn-submit-snippet");
+    if (submitBtn) submitBtn.textContent = snippet ? "Update Snippet" : "Save Snippet";
 
     if (snippet) {
-        document.getElementById("snippet-name").value = snippet.name;
+        document.getElementById("snippet-name").value = snippet.name || "";
         document.getElementById("snippet-category").value = snippet.category || "";
         document.getElementById("snippet-description").value = snippet.description || "";
-        document.getElementById("snippet-sql").value = snippet.sql;
-        document.getElementById("snippet-favorite").checked = snippet.is_favorite;
-        document.getElementById("snippet-shared").checked = snippet.is_shared;
+        document.getElementById("snippet-sql").value = snippet.sql || "";
+        document.getElementById("snippet-favorite").checked = Boolean(snippet.is_favorite);
+        document.getElementById("snippet-shared").checked = Boolean(snippet.is_shared);
     }
 }
 
 async function saveSnippetForm(event) {
     event.preventDefault();
     
-    const snippetId = document.getElementById("snippet-form-container").dataset.editId;
+    const idInput = document.getElementById("snippet-form-id");
+    const snippetId = document.getElementById("snippet-form-container")?.dataset?.editId || idInput?.value || "";
     const name = document.getElementById("snippet-name").value.trim();
     const category = document.getElementById("snippet-category").value.trim();
     const description = document.getElementById("snippet-description").value.trim();

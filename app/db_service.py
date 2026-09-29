@@ -7,7 +7,7 @@ import time
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
     import psycopg2
@@ -62,6 +62,270 @@ class DatabaseType(str, Enum):
 
 def _db_name(db_type: Any) -> str:
     return str(getattr(db_type, "value", db_type)).lower()
+
+
+# ---------------------------------------------------------------------------
+# Query Parameter Parsing and Substitution
+# ---------------------------------------------------------------------------
+
+
+# Module-level regex patterns for parameter parsing
+# Matches single-quoted strings, double-quoted strings, block comments, and line comments
+# to ensure parameter placeholders inside literals and comments are ignored.
+SQL_TOKEN_PATTERN = re.compile(
+    r"'(?:''|[^'])*'"                             # Single-quoted string
+    r'|"(?:""|[^"])*"'                           # Double-quoted string
+    r'|/\*[\s\S]*?\*/'                            # Block comment
+    r'|--[^\r\n]*'                                # Line comment
+    r'|(?P<pg>\$(\d+))'                           # $1, $2 - PostgreSQL positional
+    r'|(?P<pyformat>%\(([a-zA-Z_][a-zA-Z0-9_]*)\)s)' # %(name)s - Python format
+    r'|(?<!:)(?P<named>:([a-zA-Z_][a-zA-Z0-9_]*))(?!:)' # :name - named params (excluding :: casts)
+    r'|(?P<at>@([a-zA-Z_][a-zA-Z0-9_]*))'        # @name - SQL Server
+    r'|(?P<num_qmark>\?(\d+))'                   # ?1, ?2 - numbered question marks
+    r'|(?P<qmark>\?)'                            # ? - simple positional
+)
+
+
+def _detect_parameter_style(db_type: str) -> str:
+    """Return the native driver parameter style ('format' for %s or 'qmark' for ?)."""
+    name = _db_name(db_type)
+    if name in {DatabaseType.POSTGRESQL.value, DatabaseType.MYSQL.value, "mariadb"}:
+        return "format"  # psycopg2 and pymysql use %s
+    return "qmark"  # sqlite3, pyodbc, and fdb use ?
+
+
+def parse_query_parameters(query: str) -> List[Dict[str, Any]]:
+    """
+    Parse bind parameters from a SQL query.
+
+    Supports multiple parameter styles:
+    - PostgreSQL: $1, $2, ...
+    - MySQL/SQLite: ? or ?1, ?2 (numbered)
+    - SQL Server: @name or @p1
+    - Oracle/Generic: :name
+    - Named: %(name)s or :name
+
+    Returns a list of parameter info dicts with keys:
+    - name: parameter name
+    - display_name: full placeholder representation
+    - style: parameter style detected
+    - positions: character positions in query
+    - occurrences: number of occurrences in query
+    - is_positional: boolean
+    """
+    all_matches = []
+
+    for match in SQL_TOKEN_PATTERN.finditer(query):
+        if match.group('pg'):
+            all_matches.append({
+                'name': f"${match.group(2)}",
+                'raw_name': match.group(2),
+                'style': 'postgresql',
+                'start': match.start('pg'),
+                'end': match.end('pg')
+            })
+        elif match.group('pyformat'):
+            raw = match.group('pyformat').strip('%()s')
+            all_matches.append({
+                'name': match.group('pyformat'),
+                'raw_name': raw,
+                'style': 'pyformat',
+                'start': match.start('pyformat'),
+                'end': match.end('pyformat')
+            })
+        elif match.group('named'):
+            raw = match.group('named')[1:]
+            all_matches.append({
+                'name': match.group('named'),
+                'raw_name': raw,
+                'style': 'named',
+                'start': match.start('named'),
+                'end': match.end('named')
+            })
+        elif match.group('at'):
+            raw = match.group('at')[1:]
+            all_matches.append({
+                'name': match.group('at'),
+                'raw_name': raw,
+                'style': 'at',
+                'start': match.start('at'),
+                'end': match.end('at')
+            })
+        elif match.group('num_qmark'):
+            raw = match.group('num_qmark')[1:]
+            all_matches.append({
+                'name': match.group('num_qmark'),
+                'raw_name': raw,
+                'style': 'numbered_qmark',
+                'start': match.start('num_qmark'),
+                'end': match.end('num_qmark')
+            })
+        elif match.group('qmark'):
+            all_matches.append({
+                'name': '?',
+                'raw_name': None,
+                'style': 'qmark',
+                'start': match.start('qmark'),
+                'end': match.end('qmark')
+            })
+
+    # Group by parameter identity and deduplicate
+    param_groups = {}
+
+    for match in all_matches:
+        key = match['name']
+        if key not in param_groups:
+            param_groups[key] = {
+                'name': match['raw_name'] or match['name'],
+                'style': match['style'],
+                'display_name': match['name'],
+                'positions': [],
+                'occurrences': 0,
+                'is_positional': match['style'] in ('qmark', 'postgresql', 'numbered_qmark')
+            }
+        param_groups[key]['positions'].append(match['start'])
+        param_groups[key]['occurrences'] += 1
+
+    params = []
+    for key, info in param_groups.items():
+        params.append({
+            'name': info['name'],
+            'display_name': info['display_name'],
+            'style': info['style'],
+            'positions': info['positions'],
+            'occurrences': info['occurrences'],
+            'is_positional': info['is_positional']
+        })
+
+    # Sort positional params by their position number
+    params.sort(key=lambda p: (
+        0 if p['is_positional'] else 1,
+        p['positions'][0] if p['positions'] else 999
+    ))
+
+    return params
+
+
+def substitute_parameters(query: str, params: Union[Dict[str, Any], List[Any]], db_type: str) -> Tuple[str, List[Any]]:
+    """
+    Substitute named/positional parameters in a query with database-specific placeholders.
+
+    Returns a tuple of (modified_query, parameter_values_list) where parameter_values_list
+    is ordered correctly for the database driver.
+    """
+    param_style = _detect_parameter_style(db_type)
+    placeholder = "%s" if param_style == "format" else "?"
+    param_values: List[Any] = []
+
+    # Normalize input params to dict
+    if isinstance(params, list):
+        param_dict = {str(i + 1): v for i, v in enumerate(params)}
+    elif isinstance(params, dict):
+        param_dict = params
+    else:
+        param_dict = {}
+
+    pos_counter = 0
+
+    def replace_match(match: re.Match) -> str:
+        nonlocal pos_counter
+        if match.group('pg'):
+            num = match.group('pg')[1:]
+            val = param_dict.get(num, param_dict.get('$' + num, param_dict.get(int(num) if num.isdigit() else None)))
+            param_values.append(val)
+            return placeholder
+        if match.group('pyformat'):
+            raw = match.group('pyformat').strip('%()s')
+            val = param_dict.get(raw)
+            param_values.append(val)
+            return placeholder
+        if match.group('named'):
+            raw = match.group('named')[1:]
+            val = param_dict.get(raw, param_dict.get(':' + raw))
+            param_values.append(val)
+            return placeholder
+        if match.group('at'):
+            raw = match.group('at')[1:]
+            val = param_dict.get(raw, param_dict.get('@' + raw))
+            param_values.append(val)
+            return placeholder
+        if match.group('num_qmark'):
+            num = match.group('num_qmark')[1:]
+            val = param_dict.get(num, param_dict.get('?' + num, param_dict.get(int(num) if num.isdigit() else None)))
+            param_values.append(val)
+            return placeholder
+        if match.group('qmark'):
+            pos_counter += 1
+            val = param_dict.get(str(pos_counter), param_dict.get(pos_counter))
+            param_values.append(val)
+            return placeholder
+        return match.group(0)
+
+    # Single pass substitution
+    query = SQL_TOKEN_PATTERN.sub(replace_match, query)
+
+    return query, param_values
+
+
+def validate_query_parameters(query: str, params: Dict[str, Any], db_type: str) -> Tuple[bool, str]:
+    """
+    Validate that all required parameters are provided.
+
+    Returns (is_valid, error_message)
+    """
+    detected = parse_query_parameters(query)
+    missing = []
+
+    if isinstance(params, list):
+        param_dict = {str(i + 1): v for i, v in enumerate(params)}
+    elif isinstance(params, dict):
+        param_dict = params
+    else:
+        param_dict = {}
+
+    # Count simple ? placeholders
+    simple_qmark_count = 0
+    for param in detected:
+        if param['style'] == 'qmark' and param['name'] == '?':
+            simple_qmark_count = param['occurrences']
+        else:
+            name = param['name']
+            # Check if parameter value is provided
+            if name not in param_dict and param['name'].lstrip('$@:?').isdigit():
+                # Try positional
+                if param['name'].lstrip('$@:?') not in param_dict:
+                    missing.append(param['display_name'])
+            elif name not in param_dict:
+                missing.append(param['display_name'])
+
+    # Handle simple ? placeholders - need positional params
+    if simple_qmark_count > 0:
+        # Count how many positional params (1, 2, 3...) are provided
+        provided_positional = sum(1 for k in param_dict.keys() if k.isdigit())
+        if provided_positional < simple_qmark_count:
+            missing.append(f"{simple_qmark_count} positional parameter(s) (?)")
+
+    if missing:
+        return False, f"Missing required parameters: {', '.join(missing)}"
+
+    return True, ""
+
+
+def _serialize_value(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            return value.decode("utf-8")
+        except UnicodeDecodeError:
+            return value.hex()
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
 
 
 def get_supported_databases() -> List[Dict[str, Any]]:
@@ -495,48 +759,207 @@ def _edit_context_for_query(query: str, columns: List[str], rows: List[Dict[str,
 
 
 def get_schema_metadata(**params: Any) -> Dict[str, Any]:
-    """Return table and column names for editor suggestions."""
+    """Return table and column names for editor suggestions with rich metadata."""
     conn = None
     cursor = None
     name = _db_name(params.get("db_type", "sqlite"))
     try:
         conn = _get_connection(name, params)
         cursor = conn.cursor()
+        tables = []
+
         if name == DatabaseType.SQLITE.value:
             cursor.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
             table_names = [row[0] for row in cursor.fetchall()]
-            tables = []
             for table in table_names:
                 cursor.execute(f'PRAGMA table_info("{str(table).replace(chr(34), chr(34) * 2)}")')
-                tables.append({"name": table, "columns": [row[1] for row in cursor.fetchall()]})
+                columns = []
+                for row in cursor.fetchall():
+                    # row: cid, name, type, notnull, dflt_value, pk
+                    columns.append({
+                        "name": row[1],
+                        "type": row[2],
+                        "not_null": bool(row[3]),
+                        "default": row[4],
+                        "is_primary_key": bool(row[5])
+                    })
+                # Get foreign keys
+                cursor.execute(f'PRAGMA foreign_key_list("{str(table).replace(chr(34), chr(34) * 2)}")')
+                foreign_keys = []
+                for row in cursor.fetchall():
+                    # row: id, seq, table, from, to, on_update, on_delete, match
+                    foreign_keys.append({
+                        "column": row[3],
+                        "ref_table": row[2],
+                        "ref_column": row[4]
+                    })
+                tables.append({"name": table, "columns": columns, "foreign_keys": foreign_keys})
+
         elif name == DatabaseType.MYSQL.value:
             cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name")
             table_names = [row[0] for row in cursor.fetchall()]
-            tables = []
             for table in table_names:
-                cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = %s ORDER BY ordinal_position", (table,))
-                tables.append({"name": table, "columns": [row[0] for row in cursor.fetchall()]})
+                cursor.execute("""
+                    SELECT column_name, data_type, is_nullable, column_default, column_key, extra
+                    FROM information_schema.columns
+                    WHERE table_schema = DATABASE() AND table_name = %s
+                    ORDER BY ordinal_position
+                """, (table,))
+                columns = []
+                for row in cursor.fetchall():
+                    columns.append({
+                        "name": row[0],
+                        "type": row[1],
+                        "not_null": row[2] == "NO",
+                        "default": row[3],
+                        "is_primary_key": row[4] == "PRI",
+                        "is_auto_increment": "auto_increment" in str(row[5]).lower()
+                    })
+                # Get foreign keys
+                cursor.execute("""
+                    SELECT column_name, referenced_table_name, referenced_column_name
+                    FROM information_schema.key_column_usage
+                    WHERE table_schema = DATABASE() AND table_name = %s AND referenced_table_name IS NOT NULL
+                """, (table,))
+                foreign_keys = []
+                for row in cursor.fetchall():
+                    foreign_keys.append({
+                        "column": row[0],
+                        "ref_table": row[1],
+                        "ref_column": row[2]
+                    })
+                tables.append({"name": table, "columns": columns, "foreign_keys": foreign_keys})
+
         elif name == DatabaseType.MSSQL.value:
             cursor.execute("SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME")
             table_names = [(row[0], row[1]) for row in cursor.fetchall()]
-            tables = []
             for schema, table in table_names:
-                cursor.execute("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION", (schema, table))
-                tables.append({"name": f"{schema}.{table}", "columns": [row[0] for row in cursor.fetchall()]})
+                cursor.execute("""
+                    SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT,
+                           CASE WHEN COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsIdentity') = 1 THEN 1 ELSE 0 END as is_identity
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                    ORDER BY ORDINAL_POSITION
+                """, (schema, table))
+                columns = []
+                for row in cursor.fetchall():
+                    columns.append({
+                        "name": row[0],
+                        "type": row[1],
+                        "not_null": row[2] == "NO",
+                        "default": row[3],
+                        "is_primary_key": False,  # Will be set below
+                        "is_auto_increment": bool(row[4])
+                    })
+                # Get primary keys
+                cursor.execute("""
+                    SELECT KU.COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS TC
+                    JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE KU ON TC.CONSTRAINT_NAME = KU.CONSTRAINT_NAME AND TC.TABLE_SCHEMA = KU.TABLE_SCHEMA AND TC.TABLE_NAME = KU.TABLE_NAME
+                    WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY' AND TC.TABLE_SCHEMA = ? AND TC.TABLE_NAME = ?
+                """, (schema, table))
+                pk_columns = {row[0] for row in cursor.fetchall()}
+                for col in columns:
+                    col["is_primary_key"] = col["name"] in pk_columns
+
+                # Get foreign keys
+                cursor.execute("""
+                    SELECT KU.COLUMN_NAME, C.REFERENCED_TABLE_NAME, KU.REFERENCED_COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS RC
+                    JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE KU ON RC.CONSTRAINT_NAME = KU.CONSTRAINT_NAME AND RC.TABLE_SCHEMA = KU.TABLE_SCHEMA
+                    JOIN INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE C ON RC.UNIQUE_CONSTRAINT_NAME = C.CONSTRAINT_NAME AND RC.TABLE_SCHEMA = C.TABLE_SCHEMA
+                    WHERE KU.TABLE_SCHEMA = ? AND KU.TABLE_NAME = ?
+                """, (schema, table))
+                foreign_keys = []
+                for row in cursor.fetchall():
+                    foreign_keys.append({
+                        "column": row[0],
+                        "ref_table": row[1],
+                        "ref_column": row[2]
+                    })
+                tables.append({"name": f"{schema}.{table}", "columns": columns, "foreign_keys": foreign_keys})
+
         elif name == DatabaseType.FIREBIRD.value:
             cursor.execute("SELECT TRIM(RDB$RELATION_NAME) FROM RDB$RELATIONS WHERE RDB$VIEW_BLR IS NULL AND COALESCE(RDB$SYSTEM_FLAG, 0) = 0 ORDER BY RDB$RELATION_NAME")
             table_names = [row[0] for row in cursor.fetchall()]
-            tables = []
+
+            # Pre-fetch all field types in a single query to avoid N+1
+            cursor.execute("SELECT TRIM(RDB$FIELD_NAME), TRIM(RDB$FIELD_TYPE), RDB$FIELD_LENGTH, RDB$FIELD_SCALE FROM RDB$FIELDS")
+            field_types = {}
+            type_map = {7: "SMALLINT", 8: "INTEGER", 10: "FLOAT", 12: "DATE", 13: "TIME", 14: "CHAR", 16: "BIGINT", 27: "DOUBLE PRECISION", 35: "TIMESTAMP", 37: "VARCHAR", 261: "BLOB"}
+            for row in cursor.fetchall():
+                field_name = row[0]
+                field_type_row = row[1:]
+                if field_type_row:
+                    type_str = type_map.get(field_type_row[0], str(field_type_row[0]))
+                else:
+                    type_str = "unknown"
+                field_types[field_name] = type_str
+
             for table in table_names:
-                cursor.execute("SELECT TRIM(RDB$FIELD_NAME) FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = ? ORDER BY RDB$FIELD_POSITION", (table,))
-                tables.append({"name": table, "columns": [row[0] for row in cursor.fetchall()]})
-        else:
+                cursor.execute("""
+                    SELECT TRIM(RDB$FIELD_NAME), TRIM(RDB$FIELD_SOURCE)
+                    FROM RDB$RELATION_FIELDS
+                    WHERE RDB$RELATION_NAME = ? ORDER BY RDB$FIELD_POSITION
+                """, (table,))
+                columns = []
+                for row in cursor.fetchall():
+                    field_name = row[0]
+                    field_source = row[1]
+                    # Get field type from pre-fetched map
+                    type_str = field_types.get(field_source, "unknown")
+                    columns.append({
+                        "name": field_name,
+                        "type": type_str,
+                        "not_null": False,  # Would need more complex query
+                        "default": None,
+                        "is_primary_key": False
+                    })
+                tables.append({"name": table, "columns": columns, "foreign_keys": []})
+
+        else:  # PostgreSQL
             cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = CURRENT_SCHEMA() ORDER BY table_name")
             table_names = [row[0] for row in cursor.fetchall()]
-            tables = []
             for table in table_names:
-                cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = CURRENT_SCHEMA() AND table_name = %s ORDER BY ordinal_position", (table,))
-                tables.append({"name": table, "columns": [row[0] for row in cursor.fetchall()]})
+                cursor.execute("""
+                    SELECT column_name, data_type, is_nullable, column_default,
+                           CASE WHEN pk.column_name IS NOT NULL THEN TRUE ELSE FALSE END as is_primary_key
+                    FROM information_schema.columns c
+                    LEFT JOIN (
+                        SELECT kcu.column_name
+                        FROM information_schema.table_constraints tc
+                        JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+                        WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = CURRENT_SCHEMA() AND tc.table_name = %s
+                    ) pk ON c.column_name = pk.column_name
+                    WHERE c.table_schema = CURRENT_SCHEMA() AND c.table_name = %s
+                    ORDER BY c.ordinal_position
+                """, (table, table))
+                columns = []
+                for row in cursor.fetchall():
+                    columns.append({
+                        "name": row[0],
+                        "type": row[1],
+                        "not_null": row[2] == "NO",
+                        "default": row[3],
+                        "is_primary_key": row[4]
+                    })
+                # Get foreign keys
+                cursor.execute("""
+                    SELECT kcu.column_name, ccu.table_name as ref_table, ccu.column_name as ref_column
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+                    JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
+                    WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = CURRENT_SCHEMA() AND tc.table_name = %s
+                """, (table,))
+                foreign_keys = []
+                for row in cursor.fetchall():
+                    foreign_keys.append({
+                        "column": row[0],
+                        "ref_table": row[1],
+                        "ref_column": row[2]
+                    })
+                tables.append({"name": table, "columns": columns, "foreign_keys": foreign_keys})
+
         return {"success": True, "tables": tables}
     except Exception as exc:
         return {"success": False, "error": _redact_error(exc, params.get("password")), "tables": []}
@@ -694,7 +1117,12 @@ def validate_query(query: str, role: str = "viewer", db_type: Any = None, connec
     if not match:
         return False, "A SQL statement is required", "", False
     first = match.group(1).upper()
-    if first == "SELECT" and db_type is not None and _db_name(db_type) == DatabaseType.SQLITE.value:
+
+    # Skip EXPLAIN validation for queries that appear to have parameter placeholders
+    # as they would fail without bound parameters
+    has_params = bool(parse_query_parameters(query))
+
+    if first == "SELECT" and db_type is not None and _db_name(db_type) == DatabaseType.SQLITE.value and not has_params:
         conn = None
         try:
             validation_params = connection_params or {}
@@ -761,10 +1189,21 @@ def execute_query(
     password: Optional[str] = None,
     extra_params: Optional[Dict[str, Any]] = None,
     role: str = "viewer",
+    parameters: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    # Validate query first (without parameters)
     ok, validation_error, query_text, _ = validate_query(query, role, db_type, {"host": host, "port": port, "database": database, "username": username, "password": password, "extra_params": extra_params or {}})
     if not ok:
         return {"success": False, "error": validation_error, "data": [], "count": 0, "columns": []}
+
+    # Validate and substitute parameters
+    if parameters:
+        param_valid, param_error = validate_query_parameters(query, parameters, _db_name(db_type))
+        if not param_valid:
+            return {"success": False, "error": param_error, "data": [], "count": 0, "columns": []}
+        query_text, param_values = substitute_parameters(query_text, parameters, _db_name(db_type))
+    else:
+        param_values = []
 
     try:
         safe_limit = max(1, min(int(limit or 1000), 10_000))
@@ -794,7 +1233,10 @@ def execute_query(
         # Any supported statement may return a result set (for example SHOW,
         # EXPLAIN, PRAGMA, CALL, or DML with RETURNING).  Let the driver tell us
         # whether rows are available instead of limiting results to SELECT/WITH.
-        cursor.execute(query_text)
+        if param_values:
+            cursor.execute(query_text, param_values)
+        else:
+            cursor.execute(query_text)
 
         if cursor.description:
             columns = [description[0] for description in cursor.description]

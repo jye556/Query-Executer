@@ -8,6 +8,27 @@ let databases = [];
 let groups = [];
 let users = [];
 let currentUser = null;
+try {
+    Object.defineProperty(window, "currentUser", {
+        get() { return currentUser; },
+        set(val) { currentUser = val; },
+        configurable: true
+    });
+    Object.defineProperty(window, "connections", {
+        get() { return connections; },
+        set(val) { connections = val; },
+        configurable: true
+    });
+    Object.defineProperty(window, "activeTabId", {
+        get() { return activeTabId; },
+        set(val) { activeTabId = val; },
+        configurable: true
+    });
+} catch (_) {
+    window.currentUser = currentUser;
+    window.connections = connections;
+    window.activeTabId = activeTabId;
+}
 let currentView = "query-section";
 let selectedConnectionIds = new Set();
 let currentExportData = null;
@@ -25,6 +46,9 @@ let tabCounter = 0;
 
 // Editor preferences (loaded from localStorage)
 let editorPreferences = {};
+
+// Parameter panel state
+let parameterPanelVisible = false;
 
 let btnShowAddConnection, addConnectionFormContainer, addConnectionForm,
     btnCancelConnection, connTogglePwdBtn, connPwdInput, connectionsListContainer,
@@ -47,12 +71,8 @@ function getCookie(name) {
 }
 
 function escapeHtml(value) {
-    return String(value ?? "")
-        .replace(/&/g, "&")
-        .replace(/</g, "<")
-        .replace(/>/g, ">")
-        .replace(/"/g, "\"")
-        .replace(/'/g, "&#039;");
+    const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
+    return String(value ?? "").replace(/[&<>"']/g, char => map[char]);
 }
 
 async function apiFetch(url, options = {}) {
@@ -94,18 +114,31 @@ function createQueryTab(initialQuery = "") {
         currentEditContext: null,
         editorView: null,
         editorInstance: null,
-        editorContainer: null
+        editorContainer: null,
+        editorHost: null,
+        singleResultContainer: null,
+        _eventsBound: false,
+        parameters: {},
+        parametersPanel: null,
+        parametersList: null,
+        btnToggleParameters: null,
+        btnRefreshParameters: null
     };
     queryTabs.push(tab);
     return tab;
 }
 
 function getActiveTab() {
-    return queryTabs.find(t => t.id === activeTabId);
+    return queryTabs.find(t => t && t.id === activeTabId);
 }
 
 function getTabById(tabId) {
-    return queryTabs.find(t => t.id === tabId);
+    if (!tabId) return null;
+    const found = queryTabs.find(t => t && t.id === tabId);
+    if (!found) {
+        console.error(`[getTabById] Tab not found: "${tabId}". Available:`, queryTabs.map(t => t?.id));
+    }
+    return found;
 }
 
 function renderQueryTabs() {
@@ -122,14 +155,39 @@ function renderQueryTabs() {
 
 function renderTabPanels() {
     if (!queryTabPanels) return;
-    queryTabPanels.innerHTML = queryTabs.map(tab => `
-        <div class="query-tab-panel ${tab.id === activeTabId ? "active" : ""}" data-tab-id="${tab.id}" role="tabpanel">
-            ${renderTabPanelContent(tab)}
-        </div>
-    `).join("");
-    
-    // Re-bind events for the active panel
-    bindTabPanelEvents(getActiveTab());
+
+    const validTabIds = new Set(queryTabs.map(t => t.id));
+
+    // Clean up panels for closed tabs
+    Array.from(queryTabPanels.children).forEach(panel => {
+        if (!validTabIds.has(panel.dataset.tabId)) {
+            panel.remove();
+        }
+    });
+
+    // Ensure every tab in queryTabs has a persistent panel in the DOM
+    queryTabs.forEach(tab => {
+        let panel = queryTabPanels.querySelector(`.query-tab-panel[data-tab-id="${tab.id}"]`);
+        if (!panel) {
+            panel = document.createElement("div");
+            panel.className = `query-tab-panel ${tab.id === activeTabId ? "active" : ""}`;
+            panel.dataset.tabId = tab.id;
+            panel.setAttribute("role", "tabpanel");
+            panel.innerHTML = renderTabPanelContent(tab);
+            queryTabPanels.appendChild(panel);
+            bindTabPanelEvents(tab);
+        } else {
+            panel.classList.toggle("active", tab.id === activeTabId);
+        }
+    });
+
+    const activeTab = getActiveTab();
+    if (activeTab) {
+        ensureTabElementReferences(activeTab);
+        if (activeTab.editorInstance) {
+            setTimeout(() => activeTab.editorInstance?.focus(), 50);
+        }
+    }
 }
 
 function renderTabPanelContent(tab) {
@@ -140,11 +198,30 @@ function renderTabPanelContent(tab) {
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     <h2>SQL Query Editor</h2>
                 </div>
-                <button type="button" class="btn btn-accent btn-large" id="btn-execute-query-${tab.id}" data-tab-id="${tab.id}">
-                    <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                    <span id="btn-execute-text-${tab.id}">Execute</span>
-                    <div class="btn-spinner hidden" id="execute-spinner-${tab.id}"></div>
-                </button>
+                <div class="editor-header-actions">
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-toggle-parameters-${tab.id}" title="Toggle Parameters Panel" aria-label="Toggle Parameters Panel">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                        <span class="btn-text">Parameters</span>
+                    </button>
+                    <button type="button" class="btn btn-accent btn-large" id="btn-execute-query-${tab.id}" data-tab-id="${tab.id}">
+                        <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        <span id="btn-execute-text-${tab.id}">Execute</span>
+                        <div class="btn-spinner hidden" id="execute-spinner-${tab.id}"></div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Parameters Panel -->
+            <div class="parameters-panel hidden" id="parameters-panel-${tab.id}" role="region" aria-label="Query Parameters">
+                <div class="parameters-header">
+                    <h3>Query Parameters</h3>
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-parameters-${tab.id}" title="Auto-detect parameters">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    </button>
+                </div>
+                <div class="parameters-list" id="parameters-list-${tab.id}">
+                    <p class="parameters-empty">No parameters detected. Click "Auto-detect" or enter a query with bind variables.</p>
+                </div>
             </div>
 
             <div class="editor-pane">
@@ -171,7 +248,7 @@ function renderTabPanelContent(tab) {
         <section class="grid-card results-card">
             <div class="card-header">
                 <div class="header-title">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="1"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
                     <h2>Query Results</h2>
                 </div>
                 <div class="results-meta">
@@ -197,6 +274,8 @@ function renderTabPanelContent(tab) {
                     <p>Select a connection, enter a SQL query, and click Execute to see results.</p>
                 </div>
 
+                <div id="single-result-container-${tab.id}" class="table-scroll-container hidden"></div>
+
                 <div id="multi-results-container-${tab.id}" class="hidden">
                     <!-- Each selected connection gets its own result section -->
                 </div>
@@ -213,10 +292,8 @@ function renderTabPanelContent(tab) {
     `;
 }
 
-function bindTabPanelEvents(tab) {
+function ensureTabElementReferences(tab) {
     if (!tab) return;
-
-    // Get DOM elements
     tab.editorContainer = document.getElementById(`editor-container-${tab.id}`);
     tab.editorHost = document.getElementById(`query-editor-${tab.id}`);
     tab.suggestionsElement = document.getElementById(`query-suggestions-${tab.id}`);
@@ -225,6 +302,7 @@ function bindTabPanelEvents(tab) {
     tab.executeText = document.getElementById(`btn-execute-text-${tab.id}`);
     tab.executeSpinner = document.getElementById(`execute-spinner-${tab.id}`);
     tab.resultsContainer = document.getElementById(`results-container-${tab.id}`);
+    tab.singleResultContainer = document.getElementById(`single-result-container-${tab.id}`);
     tab.multiResultsContainer = document.getElementById(`multi-results-container-${tab.id}`);
     tab.resultsPlaceholder = document.getElementById(`results-placeholder-${tab.id}`);
     tab.errorContainer = document.getElementById(`error-container-${tab.id}`);
@@ -235,6 +313,21 @@ function bindTabPanelEvents(tab) {
     tab.btnApplyEdits = document.getElementById(`btn-apply-result-edits-${tab.id}`);
     tab.btnRevertEdits = document.getElementById(`btn-revert-result-edits-${tab.id}`);
     tab.editActions = document.getElementById(`result-edit-actions-${tab.id}`);
+    tab.parametersPanel = document.getElementById(`parameters-panel-${tab.id}`);
+    tab.parametersList = document.getElementById(`parameters-list-${tab.id}`);
+    tab.btnToggleParameters = document.getElementById(`btn-toggle-parameters-${tab.id}`);
+    tab.btnRefreshParameters = document.getElementById(`btn-refresh-parameters-${tab.id}`);
+}
+
+function bindTabPanelEvents(tab) {
+    if (!tab) return;
+
+    ensureTabElementReferences(tab);
+
+    // Initialize parameter values storage for this tab
+    if (!tab.parameters) {
+        tab.parameters = {};
+    }
 
     // Initialize CodeMirror editor if not already created
     if (!tab.editorInstance && tab.editorHost && window.CodeMirrorEditor) {
@@ -279,45 +372,82 @@ function bindTabPanelEvents(tab) {
         if (tab.id === activeTabId) {
             tab.editorInstance.focus();
         }
+    } else if (!tab.editorInstance && !tab.editorElement && tab.editorHost) {
+        fallbackToTextarea(tab);
     }
 
-    // Execute button
-    tab.executeBtn?.addEventListener("click", () => executeQuery(tab.id));
+    if (!tab._eventsBound) {
+        tab._eventsBound = true;
 
-    // Clear editor
-    document.getElementById(`btn-clear-editor-${tab.id}`)?.addEventListener("click", () => {
-        if (tab.editorInstance) {
-            tab.editorInstance.setValue("");
-            tab.query = "";
-            tab.isDirty = true;
-            updateTabName(tab);
-            updateQueryCheckForTab(tab);
-            tab.editorInstance.focus();
-        }
-    });
+        tab.executeBtn?.addEventListener("click", () => {
+            executeQuery(tab.id);
+        });
 
-    // Format SQL (placeholder)
-    document.getElementById(`btn-format-sql-${tab.id}`)?.addEventListener("click", () => {
-        showToast("SQL formatting not yet implemented", "info");
-    });
+        // Clear editor
+        document.getElementById(`btn-clear-editor-${tab.id}`)?.addEventListener("click", () => {
+            if (tab.editorInstance) {
+                tab.editorInstance.setValue("");
+                tab.query = "";
+                tab.isDirty = true;
+                updateTabName(tab);
+                updateQueryCheckForTab(tab);
+                tab.editorInstance.focus();
+            } else if (tab.editorElement) {
+                tab.editorElement.value = "";
+                tab.query = "";
+                tab.isDirty = true;
+                updateTabName(tab);
+                updateQueryCheckForTab(tab);
+                tab.editorElement.focus();
+            }
+        });
 
-    // Apply edits
-    tab.btnApplyEdits?.addEventListener("click", () => applyResultEdits(tab.id));
+        // Format SQL
+        document.getElementById(`btn-format-sql-${tab.id}`)?.addEventListener("click", () => {
+            if (window.SqlFormatter) {
+                window.SqlFormatter.formatEditorSql(tab.id);
+            } else {
+                showToast("SQL formatter not loaded", "warning");
+            }
+        });
 
-    // Revert edits
-    tab.btnRevertEdits?.addEventListener("click", () => revertResultEdits(tab.id));
+        // Apply edits
+        tab.btnApplyEdits?.addEventListener("click", () => applyResultEdits(tab.id));
 
-    // Export CSV
-    tab.btnExportCsv?.addEventListener("click", () => exportCsv(tab.id));
+        // Revert edits
+        tab.btnRevertEdits?.addEventListener("click", () => revertResultEdits(tab.id));
 
-    // Suggestion clicks
-    tab.suggestionsElement?.addEventListener("click", e => {
-        const btn = e.target.closest("button[data-suggestion]");
-        if (btn) insertSuggestionForTab(tab, btn.dataset.suggestion);
-    });
+        // Export CSV
+        tab.btnExportCsv?.addEventListener("click", () => exportCsv(tab.id));
+
+        // Suggestion clicks
+        tab.suggestionsElement?.addEventListener("click", e => {
+            const btn = e.target.closest("button[data-suggestion]");
+            if (btn) insertSuggestionForTab(tab, btn.dataset.suggestion);
+        });
+
+        // Parameter panel toggle
+        tab.btnToggleParameters?.addEventListener("click", () => toggleParametersPanel(tab));
+
+        // Refresh parameters (auto-detect)
+        tab.btnRefreshParameters?.addEventListener("click", () => refreshParameters(tab));
+    }
 
     // Initialize query check
     updateQueryCheckForTab(tab);
+
+    // Initialize parameters panel if query has parameters
+    if (tab.query && tab.query.trim()) {
+        setTimeout(() => refreshParameters(tab), 100);
+    }
+
+    // Initialize autocomplete if connection is selected
+    if (tab.connectionIds.size > 0 && window.AutocompleteManager) {
+        setTimeout(() => {
+            const connectionId = Array.from(tab.connectionIds)[0];
+            window.AutocompleteManager.initializeAutocomplete(tab);
+        }, 200);
+    }
 }
 
 /**
@@ -462,14 +592,17 @@ function updateQuerySuggestionsForTab(tab) {
     } else if (dotColumnMatch) {
         const tableName = dotColumnMatch[1].toLowerCase();
         const matched = tables.filter(item => item.name.toLowerCase() === tableName || item.name.toLowerCase().endsWith(`.${tableName}`));
-        suggestions = matched.flatMap(item => item.columns).filter(name => !dotColumnMatch[2] || name.toLowerCase().startsWith(dotColumnMatch[2].toLowerCase()));
+        const cols = matched.flatMap(item => (item.columns || []).map(c => typeof c === 'string' ? c : c?.name).filter(Boolean));
+        suggestions = cols.filter(name => !dotColumnMatch[2] || name.toLowerCase().startsWith(dotColumnMatch[2].toLowerCase()));
     } else if (simpleContext && /(?:\b(?:WHERE|ON|AND|OR|BY|SET|SELECT)\s+|,\s*)[\w$]*$/i.test(simpleContext[2])) {
         const tableName = simpleContext[1].toLowerCase();
         const matched = tables.find(item => item.name.toLowerCase() === tableName || item.name.toLowerCase().endsWith(`.${tableName}`));
-        suggestions = (matched?.columns || []).filter(name => !word || name.toLowerCase().startsWith(word.toLowerCase()));
+        const cols = (matched?.columns || []).map(c => typeof c === 'string' ? c : c?.name).filter(Boolean);
+        suggestions = cols.filter(name => !word || name.toLowerCase().startsWith(word.toLowerCase()));
     } else if (/\bSELECT\s+[\w$]*$/i.test(before)) {
         const seen = new Set(before.match(/\b(?:FROM|JOIN)\s+([\w$]+)/gi)?.map(token => token.split(/\s+/).pop().toLowerCase()) || []);
-        suggestions = tables.filter(item => seen.has(item.name.toLowerCase())).flatMap(item => item.columns).filter(name => !word || name.toLowerCase().startsWith(word.toLowerCase()));
+        const cols = tables.filter(item => seen.has(item.name.toLowerCase())).flatMap(item => (item.columns || []).map(c => typeof c === 'string' ? c : c?.name).filter(Boolean));
+        suggestions = cols.filter(name => !word || name.toLowerCase().startsWith(word.toLowerCase()));
     }
     suggestions = [...new Set(suggestions)].slice(0, 8);
     if (!suggestions.length) return popup.classList.add("hidden");
@@ -517,41 +650,39 @@ function switchTab(tabId) {
     renderQueryTabs();
     renderTabPanels();
 
-    // Sync connection selection to active tab
-    syncConnectionSelectionToActiveTab();
-
-    // Restore results for the active tab
     const activeTab = getActiveTab();
     if (activeTab) {
+        loadTabConnectionSelection(activeTab);
         restoreTabResults(activeTab);
-    }
-
-    // Focus editor for the active tab
-    setTimeout(() => {
-        const tab = getActiveTab();
-        if (tab && tab.editorInstance) {
-            tab.editorInstance.focus();
-        } else if (tab && tab.editorElement) {
-            tab.editorElement.focus();
+        if (activeTab.query && activeTab.query.trim()) {
+            setTimeout(() => refreshParameters(activeTab), 100);
         }
-    }, 50);
+        setTimeout(() => {
+            if (activeTab.editorInstance) {
+                activeTab.editorInstance.focus();
+            } else if (activeTab.editorElement) {
+                activeTab.editorElement.focus();
+            }
+        }, 50);
+    }
 }
 
 function restoreTabResults(tab) {
-    if (!tab.resultsContainer || !tab.multiResultsContainer) return;
+    if (!tab) return;
+    ensureTabElementReferences(tab);
 
-    if (tab.resultHtml) {
-        // Single connection result
-        tab.resultsPlaceholder.classList.add("hidden");
-        tab.multiResultsContainer.classList.add("hidden");
+    if (tab.resultHtml && tab.singleResultContainer) {
+        tab.resultsPlaceholder?.classList.add("hidden");
+        tab.multiResultsContainer?.classList.add("hidden");
         tab.errorContainer?.classList.add("hidden");
-        tab.resultsContainer.innerHTML = tab.resultHtml;
-        tab.resultsContainer.querySelectorAll("td[contenteditable='true']").forEach(cell => {
+        tab.singleResultContainer.innerHTML = tab.resultHtml;
+        tab.singleResultContainer.classList.remove("hidden");
+        tab.singleResultContainer.querySelectorAll("td[contenteditable='true']").forEach(cell => {
             cell.addEventListener("blur", e => handleCellEdit(tab, e));
         });
-    } else if (tab.multiResultHtml) {
-        // Multi-connection results
-        tab.resultsPlaceholder.classList.add("hidden");
+    } else if (tab.multiResultHtml && tab.multiResultsContainer) {
+        tab.resultsPlaceholder?.classList.add("hidden");
+        tab.singleResultContainer?.classList.add("hidden");
         tab.errorContainer?.classList.add("hidden");
         tab.multiResultsContainer.classList.remove("hidden");
         tab.multiResultsContainer.innerHTML = tab.multiResultHtml;
@@ -559,7 +690,6 @@ function restoreTabResults(tab) {
 }
 
 function addQueryTab() {
-    // Load saved queries from localStorage
     let savedQueries = {};
     try {
         savedQueries = JSON.parse(localStorage.getItem("qe_saved_queries") || "{}");
@@ -567,11 +697,13 @@ function addQueryTab() {
     const tabId = `tab-${tabCounter + 1}`;
     const tab = createQueryTab(savedQueries[tabId] || "");
     activeTabId = tab.id;
+    if (selectedConnectionIds.size === 1) {
+        tab.connectionIds = new Set(selectedConnectionIds);
+    }
     renderQueryTabs();
     renderTabPanels();
-    syncConnectionSelectionToActiveTab();
+    loadTabConnectionSelection(tab);
 
-    // Focus editor after a brief delay to allow CodeMirror to initialize
     setTimeout(() => {
         if (tab.editorInstance) {
             tab.editorInstance.focus();
@@ -592,6 +724,10 @@ function closeQueryTab(tabId) {
         window.CodeMirrorEditor.destroyEditor(tabId);
     }
 
+    if (window.InlineEditingManager) {
+        window.InlineEditingManager.cleanupInlineEditing(tabId);
+    }
+
     // Clean up editor preferences
     delete editorPreferences[tabId];
 
@@ -606,20 +742,21 @@ function closeQueryTab(tabId) {
     } catch (_) {}
 
     if (queryTabs.length === 0) {
-        // Create a new empty tab
         addQueryTab();
         return;
     }
 
     if (wasActive) {
-        // Activate the previous tab or the next one
         const newIndex = Math.min(index, queryTabs.length - 1);
         activeTabId = queryTabs[newIndex].id;
     }
 
     renderQueryTabs();
     renderTabPanels();
-    syncConnectionSelectionToActiveTab();
+    const activeTab = getActiveTab();
+    if (activeTab) {
+        loadTabConnectionSelection(activeTab);
+    }
 }
 
 function updateTabName(tab) {
@@ -718,24 +855,233 @@ function resetEditorPreferencesHandler() {
     showToast("Editor preferences reset to defaults", "info");
 }
 
+/**
+ * Toggle the parameters panel visibility
+ */
+function toggleParametersPanel(tab) {
+    if (!tab.parametersPanel || !tab.btnToggleParameters) return;
+
+    const isHidden = tab.parametersPanel.classList.contains("hidden");
+    if (isHidden) {
+        tab.parametersPanel.classList.remove("hidden");
+        tab.btnToggleParameters.classList.add("active");
+        tab.btnToggleParameters.setAttribute("aria-expanded", "true");
+    } else {
+        tab.parametersPanel.classList.add("hidden");
+        tab.btnToggleParameters.classList.remove("active");
+        tab.btnToggleParameters.setAttribute("aria-expanded", "false");
+    }
+}
+
+/**
+ * Refresh parameters by auto-detecting from the current query
+ */
+async function refreshParameters(tab) {
+    if (!tab.parametersList) return;
+
+    // Get current query from editor
+    let sql = "";
+    if (tab.editorView) {
+        sql = tab.editorView.state.doc.toString().trim();
+    } else if (tab.editorElement) {
+        sql = tab.editorElement.value.trim();
+    } else {
+        sql = tab.query || "";
+    }
+
+    if (!sql) {
+        tab.parametersList.innerHTML = '<p class="parameters-empty">No query entered. Enter a SQL query with bind variables to detect parameters.</p>';
+        return;
+    }
+
+    // Need a connection to detect parameters
+    if (tab.connectionIds.size === 0) {
+        tab.parametersList.innerHTML = '<p class="parameters-empty">Select a connection first to detect parameters.</p>';
+        return;
+    }
+
+    const connectionId = tab.connectionIds.values().next().value;
+
+    try {
+        // Call API to parse parameters
+        const result = await apiFetch("/api/query/parameters", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ connection_id: connectionId, query: sql })
+        });
+
+        renderParametersPanel(tab, result.parameters);
+    } catch (error) {
+        console.error("Failed to detect parameters:", error);
+        tab.parametersList.innerHTML = '<p class="parameters-empty">Could not detect parameters. Enter parameters manually.</p>';
+    }
+}
+
+/**
+ * Render the parameters panel with detected parameters
+ */
+function renderParametersPanel(tab, parameters) {
+    if (!tab.parametersList) return;
+
+    if (!parameters || parameters.length === 0) {
+        tab.parametersList.innerHTML = '<p class="parameters-empty">No parameters detected in the query. Supported formats: :name, $1, ?, @name, %(name)s</p>';
+        return;
+    }
+
+    let html = '';
+    parameters.forEach((param, index) => {
+        const paramName = param.name || param.display_name;
+        const displayName = param.display_name || param.name;
+        const style = param.style || 'unknown';
+        const occurrences = param.occurrences || 1;
+
+        // Get existing value or default
+        const existingValue = tab.parameters[paramName] ?? '';
+
+        // Determine input type based on parameter name/pattern
+        const inputType = inferInputType(paramName, param);
+        const inputHtml = createParameterInput(paramName, existingValue, inputType, param);
+
+        html += `
+            <div class="parameter-item" data-param-name="${escapeHtml(paramName)}">
+                <div class="parameter-item-header">
+                    <span class="parameter-name">
+                        ${escapeHtml(displayName)}
+                        <span class="parameter-style-badge">${escapeHtml(style)}</span>
+                    </span>
+                    <span class="parameter-occurrences">${occurrences} occurrence${occurrences !== 1 ? 's' : ''}</span>
+                </div>
+                <div class="parameter-input-wrapper">
+                    ${inputHtml}
+                </div>
+            </div>
+        `;
+    });
+
+    tab.parametersList.innerHTML = html;
+
+    // Bind input change events
+    tab.parametersList.querySelectorAll('.parameter-input, .parameter-select').forEach(input => {
+        input.addEventListener('change', (e) => {
+            const paramItem = e.target.closest('.parameter-item');
+            if (paramItem) {
+                const paramName = paramItem.dataset.paramName;
+                tab.parameters[paramName] = e.target.value;
+                // Clear error state
+                e.target.classList.remove('parameter-error');
+                const errorEl = paramItem.querySelector('.parameter-error-message');
+                if (errorEl) errorEl.remove();
+            }
+        });
+        input.addEventListener('input', (e) => {
+            const paramItem = e.target.closest('.parameter-item');
+            if (paramItem) {
+                const paramName = paramItem.dataset.paramName;
+                tab.parameters[paramName] = e.target.value;
+            }
+        });
+    });
+}
+
+/**
+ * Infer input type based on parameter name
+ */
+function inferInputType(paramName, param) {
+    const name = paramName.toLowerCase();
+
+    // Date/time patterns
+    if (name.includes('date') || name.includes('time') || name.includes('created_at') || name.includes('updated_at') || name.includes('timestamp')) {
+        return 'datetime-local';
+    }
+
+    // Boolean patterns
+    if (name.includes('is_') || name.includes('has_') || name.includes('enabled') || name.includes('active') || name.includes('flag') || name.startsWith('is') || name.startsWith('has')) {
+        return 'boolean';
+    }
+
+    // Enum-like patterns (status, type, category, etc.)
+    if (name.includes('status') || name.includes('type') || name.includes('category') || name.includes('role') || name.includes('state')) {
+        return 'enum';
+    }
+
+    // Email
+    if (name.includes('email')) {
+        return 'email';
+    }
+
+    // Number patterns
+    if (name.includes('id') || name.includes('count') || name.includes('num') || name.includes('amount') || name.includes('price') || name.includes('qty') || name.includes('quantity')) {
+        return 'number';
+    }
+
+    // Default to text
+    return 'text';
+}
+
+/**
+ * Create parameter input HTML based on type
+ */
+function createParameterInput(paramName, value, type, param) {
+    const safeName = escapeHtml(paramName);
+    const safeValue = escapeHtml(String(value ?? ''));
+
+    switch (type) {
+        case 'datetime-local':
+            return `<label>Value: <input type="datetime-local" class="parameter-input" name="${safeName}" value="${safeValue}"></label>`;
+        case 'date':
+            return `<label>Value: <input type="date" class="parameter-input" name="${safeName}" value="${safeValue}"></label>`;
+        case 'time':
+            return `<label>Value: <input type="time" class="parameter-input" name="${safeName}" value="${safeValue}"></label>`;
+        case 'boolean':
+            return `<label>Value: <select class="parameter-input parameter-select" name="${safeName}"><option value="">-- Select --</option><option value="true"${value === 'true' || value === true ? ' selected' : ''}>True</option><option value="false"${value === 'false' || value === false ? ' selected' : ''}>False</option></select></label>`;
+        case 'enum':
+            // For enum, we'd need to fetch actual enum values from DB; for now use text with suggestions
+            return `<label>Value: <input type="text" class="parameter-input" name="${safeName}" value="${safeValue}" placeholder="Enter value" list="enum-${safeName}"><datalist id="enum-${safeName}"><option value="active"><option value="inactive"><option value="pending"><option value="completed"></datalist></label>`;
+        case 'number':
+            return `<label>Value: <input type="number" class="parameter-input" name="${safeName}" value="${safeValue}" step="any"></label>`;
+        case 'email':
+            return `<label>Value: <input type="email" class="parameter-input" name="${safeName}" value="${safeValue}" placeholder="email@example.com"></label>`;
+        default:
+            return `<label>Value: <input type="text" class="parameter-input" name="${safeName}" value="${safeValue}" placeholder="Enter value"></label>`;
+    }
+}
+
+/**
+ * Get parameters object for query execution
+ */
+function getTabParameters(tab) {
+    if (!tab.parameters) return {};
+    // Filter out empty values
+    const params = {};
+    for (const [key, value] of Object.entries(tab.parameters)) {
+        if (value !== '' && value !== null && value !== undefined) {
+            params[key] = value;
+        }
+    }
+    return params;
+}
+
 function syncConnectionSelectionToActiveTab() {
     const activeTab = getActiveTab();
     if (!activeTab) return;
     
     // Update active tab's connection IDs from global selection
     activeTab.connectionIds = new Set(selectedConnectionIds);
-    
-    // Update UI to show which connections are selected for this tab
-    updateConnectionSelectionUI(activeTab);
+    selectedConnectionIds.forEach(connId => ensureSchemaMetadata(connId));
 }
 
-function updateConnectionSelectionUI(tab) {
-    // This will be called when connection selection changes
-    // We just need to ensure the active tab reflects the current selection
-    if (tab) {
-        tab.connectionIds = new Set(selectedConnectionIds);
-        // Trigger schema metadata loading for selected connections
-        selectedConnectionIds.forEach(connId => ensureSchemaMetadata(connId));
+function loadTabConnectionSelection(tab) {
+    if (!tab) return;
+    selectedConnectionIds = new Set(tab.connectionIds || []);
+    if (connectionsPanelList) {
+        const buttons = connectionsPanelList.querySelectorAll(".connection-panel-item");
+        buttons.forEach(btn => {
+            const connId = btn.dataset.connectionId;
+            const isSelected = selectedConnectionIds.has(connId);
+            btn.classList.toggle("selected", isSelected);
+            const check = btn.querySelector(".connection-panel-check");
+            if (check) check.textContent = isSelected ? "✓" : "";
+        });
     }
 }
 
@@ -758,6 +1104,7 @@ function initializeQueryTabs() {
         activeTabId = tab.id;
         renderQueryTabs();
         renderTabPanels();
+        loadTabConnectionSelection(tab);
     }
 }
 
@@ -774,9 +1121,20 @@ async function fetchVersionData() {
 }
 
 async function initialize() {
-    cacheDOMElements();
-    setupSidebarVisibility();
-    setupEventListeners();
+    try {
+        cacheDOMElements();
+        setupSidebarVisibility();
+        setupEventListeners();
+    } catch (err) {
+        console.error("DOM setup error:", err);
+    }
+
+    try {
+        initializeQueryTabs();
+    } catch (err) {
+        console.error("initializeQueryTabs error:", err);
+    }
+
     try {
         const me = await apiFetch("/api/auth/me");
         currentUser = me.user;
@@ -785,18 +1143,51 @@ async function initialize() {
         document.querySelectorAll(".admin-only").forEach(node => node.classList.toggle("hidden", currentUser.role !== "admin"));
         const totpButton = document.getElementById("btn-account-security");
         if (totpButton) totpButton.textContent = currentUser.totp_enabled ? "Disable authenticator 2FA" : "Enable authenticator 2FA";
-        await checkForUpdates();
-        await Promise.all([fetchDatabases(), fetchGroups(), fetchConnections(), fetchHistory()]);
-        if (currentUser.role === "admin") await Promise.all([fetchUsers(), renderGroupsAdmin()]);
-        initializeQueryTabs();
-        if (selectedConnectionIds.size) await Promise.all(Array.from(selectedConnectionIds).map(ensureSchemaMetadata)).then(updateQuerySuggestionsForTab);
+
+        checkForUpdates().catch(err => console.warn("Update check failed:", err));
+
+        await Promise.allSettled([
+            fetchDatabases().catch(err => console.error("fetchDatabases failed:", err)),
+            fetchGroups().catch(err => console.error("fetchGroups failed:", err)),
+            fetchConnections().catch(err => console.error("fetchConnections failed:", err)),
+            fetchHistory().catch(err => console.error("fetchHistory failed:", err))
+        ]);
+
+        if (currentUser.role === "admin") {
+            await Promise.allSettled([
+                fetchUsers().catch(err => console.error("fetchUsers failed:", err)),
+                renderGroupsAdmin().catch(err => console.error("renderGroupsAdmin failed:", err))
+            ]);
+        }
+
+        const activeTab = getActiveTab();
+        if (activeTab && activeTab.connectionIds.size === 0 && selectedConnectionIds.size > 0) {
+            syncConnectionSelectionToActiveTab();
+        }
+
+        if (selectedConnectionIds.size) {
+            Promise.all(Array.from(selectedConnectionIds).map(ensureSchemaMetadata))
+                .then(() => updateQuerySuggestionsForTab(getActiveTab()))
+                .catch(() => {});
+        }
+
         historyRefreshInterval = setInterval(() => { if (currentView === "history-section") fetchHistory(); }, 10000);
     } catch (error) {
         if (!error.message.includes("Authentication required")) showToast(error.message, "error");
     }
 }
 
-document.addEventListener("DOMContentLoaded", initialize);
+if (typeof document !== "undefined") {
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initialize);
+    } else if (typeof cacheDOMElements === "function") {
+        initialize();
+    } else {
+        document.addEventListener("DOMContentLoaded", initialize);
+    }
+}
+
+
 
 function setupSidebarVisibility() {
     if (!sidebar) return;
@@ -922,11 +1313,11 @@ function setupEventListeners() {
         connNewGroupInput.classList.toggle("hidden", !selected.includes("__new__"));
         if (!selected.includes("__new__")) connNewGroupInput.value = "";
     });
-    queryGroupFilter?.addEventListener("change", () => { renderQueryConnectionPanel(); fetchConnections(); });
-    queryDbTypeFilter?.addEventListener("change", () => { renderQueryConnectionPanel(); fetchConnections(); });
+    queryGroupFilter?.addEventListener("change", renderQueryConnectionPanel);
+    queryDbTypeFilter?.addEventListener("change", renderQueryConnectionPanel);
     queryDbSearch?.addEventListener("input", renderQueryConnectionPanel);
-    connectionsGroupFilter?.addEventListener("change", () => { renderConnectionsList(); fetchConnections(); });
-    connectionsDbTypeFilter?.addEventListener("change", () => { renderConnectionsList(); fetchConnections(); });
+    connectionsGroupFilter?.addEventListener("change", renderConnectionsList);
+    connectionsDbTypeFilter?.addEventListener("change", renderConnectionsList);
     connectionsSearchInput?.addEventListener("input", renderConnectionsList);
     connTogglePwdBtn?.addEventListener("click", () => { connPwdInput.type = connPwdInput.type === "password" ? "text" : "password"; });
     addConnectionForm?.addEventListener("submit", saveConnection);
@@ -940,7 +1331,18 @@ function setupEventListeners() {
     document.getElementById("btn-add-group")?.addEventListener("click", () => showGroupForm());
     document.getElementById("btn-cancel-group")?.addEventListener("click", () => document.getElementById("admin-group-form").classList.add("hidden"));
     document.getElementById("admin-group-form")?.addEventListener("submit", saveGroupForm);
-    
+
+    // Snippets form event listeners
+    document.getElementById("btn-new-snippet")?.addEventListener("click", () => {
+        if (window.SnippetsManager) window.SnippetsManager.showSnippetForm(null);
+    });
+    document.getElementById("btn-cancel-snippet")?.addEventListener("click", () => {
+        if (window.SnippetsManager) window.SnippetsManager.cancelSnippetForm();
+    });
+    document.getElementById("snippet-form")?.addEventListener("submit", (e) => {
+        if (window.SnippetsManager) window.SnippetsManager.saveSnippetForm(e);
+    });
+
     // Tab close buttons (delegated)
     queryTabsContainer?.addEventListener("click", e => {
         const closeBtn = e.target.closest("[data-close-tab]");
@@ -972,12 +1374,12 @@ async function checkForUpdates() {
         if (autoUpdateBannerBtn) autoUpdateBannerBtn.style.display = "none";
         return;
     }
-    const current = update.version.startsWith("v") ? update.version : `v${update.version}`;
+    const current = (update.version || "").startsWith("v") ? update.version : `v${update.version || ""}`;
     const badge = document.getElementById("app-version-pill");
     const currentVersion = document.getElementById("current-app-version");
     if (currentVersion) currentVersion.textContent = current;
     if (badge) badge.textContent = current;
-    const latestVersion = update.latest_version.startsWith("v") ? update.latest_version : `v${update.latest_version}`;
+    const latestVersion = (update.latest_version || "").startsWith("v") ? update.latest_version : `v${update.latest_version || ""}`;
     const message = update.update_available ? `Version ${latestVersion} is available.` : "";
     if (status) status.textContent = update.update_available ? `New version ${latestVersion} is available.` : `You're up to date (${current}).`;
     const updateLink = document.getElementById("btn-apply-update");
@@ -998,7 +1400,7 @@ async function checkForUpdates() {
         pageUpdate.classList.toggle("hidden", !update.update_available);
     }
     const log = document.getElementById("release-log");
-    if (log) log.innerHTML = update.changelog.map(release => `<li><strong>v${escapeHtml(release.version.replace(/^v/, ""))}</strong> — ${escapeHtml((release.notes || []).join("; "))}</li>`).join("");
+    if (log && Array.isArray(update.changelog)) log.innerHTML = update.changelog.map(release => `<li><strong>v${escapeHtml(String(release.version || "").replace(/^v/, ""))}</strong> — ${escapeHtml((release.notes || []).join("; "))}</li>`).join("");
 }
 
 async function autoUpdate() {
@@ -1120,34 +1522,55 @@ function switchView(viewId) {
     currentView = viewId;
     if (window.innerWidth <= 768) sidebar.classList.add("hidden");
     if (viewId === "history-section") fetchHistory();
+    if (viewId === "snippets-section" && window.SnippetsManager) {
+        window.SnippetsManager.loadSnippets().then(() => window.SnippetsManager.renderSnippetsPanel());
+    }
     if (viewId === "users-section" && currentUser?.role === "admin") fetchUsers();
     if (viewId === "groups-section" && currentUser?.role === "admin") renderGroupsAdmin();
     if (viewId === "settings-section") checkForUpdates();
-    if (viewId === "connections-section") fetchConnections();
+    if (viewId === "connections-section") {
+        renderConnectionsList();
+    }
     if (viewId === "query-section") {
-        fetchConnections();
-        // Re-render tabs when switching back to query section
         renderQueryTabs();
         renderTabPanels();
+        renderQueryConnectionPanel();
+        const activeTab = getActiveTab();
+        if (activeTab) {
+            loadTabConnectionSelection(activeTab);
+            if (activeTab.editorInstance) {
+                setTimeout(() => activeTab.editorInstance.focus(), 50);
+            }
+        }
     }
 }
 
 async function fetchDatabases() {
-    databases = await apiFetch("/api/databases");
-    connDbTypeSelect.innerHTML = '<option value="">-- Select Type --</option>';
-    databases.forEach(db => {
-        const option = document.createElement("option");
-        option.value = db.type; option.textContent = `${db.name}${db.available ? "" : " (driver not installed)"}`; option.disabled = !db.available;
-        connDbTypeSelect.appendChild(option);
-    });
-    if (databases.some(db => db.available)) {
-        connDbTypeSelect.value = databases.find(db => db.available).type;
-        applyDatabaseDefaults(connDbTypeSelect.value);
+    try {
+        databases = await apiFetch("/api/databases");
+    } catch (error) {
+        console.error("fetchDatabases failed:", error);
+        databases = [];
     }
-    const current = queryDbTypeFilter.value || "all";
-    queryDbTypeFilter.innerHTML = '<option value="all">All Types</option>';
-    databases.forEach(db => { const option = document.createElement("option"); option.value = db.type; option.textContent = db.name; queryDbTypeFilter.appendChild(option); });
-    queryDbTypeFilter.value = [...queryDbTypeFilter.options].some(option => option.value === current) ? current : "all";
+    if (!Array.isArray(databases)) databases = [];
+    if (connDbTypeSelect) {
+        connDbTypeSelect.innerHTML = '<option value="">-- Select Type --</option>';
+        databases.forEach(db => {
+            const option = document.createElement("option");
+            option.value = db.type; option.textContent = `${db.name}${db.available ? "" : " (driver not installed)"}`; option.disabled = !db.available;
+            connDbTypeSelect.appendChild(option);
+        });
+        if (databases.some(db => db.available)) {
+            connDbTypeSelect.value = databases.find(db => db.available).type;
+            applyDatabaseDefaults(connDbTypeSelect.value);
+        }
+    }
+    if (queryDbTypeFilter) {
+        const current = queryDbTypeFilter.value || "all";
+        queryDbTypeFilter.innerHTML = '<option value="all">All Types</option>';
+        databases.forEach(db => { const option = document.createElement("option"); option.value = db.type; option.textContent = db.name; queryDbTypeFilter.appendChild(option); });
+        queryDbTypeFilter.value = [...queryDbTypeFilter.options].some(option => option.value === current) ? current : "all";
+    }
     if (connectionsDbTypeFilter) {
         const listValue = connectionsDbTypeFilter.value || "all";
         connectionsDbTypeFilter.innerHTML = '<option value="all">All Types</option>';
@@ -1169,17 +1592,24 @@ function applyDatabaseDefaults(dbType) {
     document.getElementById("conn-database-group").classList.remove("hidden");
     connPwdInput.value = "";
 }
-async function fetchGroups() { groups = await apiFetch("/api/groups"); populateGroupControls(); }
+async function fetchGroups() {
+    try {
+        groups = await apiFetch("/api/groups");
+    } catch (error) {
+        console.error("fetchGroups failed:", error);
+        groups = [];
+    }
+    if (!Array.isArray(groups)) groups = [];
+    populateGroupControls();
+}
 async function fetchConnections() {
-    // Keep each view's filters independent while ensuring the authorization
-    // boundary is always enforced by the server-side query.
-    const params = new URLSearchParams();
-    const activeGroup = currentView === "connections-section" ? connectionsGroupFilter?.value : queryGroupFilter?.value;
-    const activeType = currentView === "connections-section" ? connectionsDbTypeFilter?.value : queryDbTypeFilter?.value;
-    if (activeGroup && activeGroup !== "all" && activeGroup !== "ungrouped") params.set("group_id", activeGroup);
-    if (activeGroup === "ungrouped") params.set("group", "ungrouped");
-    if (activeType && activeType !== "all") params.set("db_type", activeType);
-    connections = await apiFetch(`/api/connections${params.toString() ? `?${params}` : ""}`);
+    try {
+        connections = await apiFetch("/api/connections");
+    } catch (error) {
+        console.error("fetchConnections failed:", error);
+        connections = [];
+    }
+    if (!Array.isArray(connections)) connections = [];
     renderConnectionsList();
     renderQueryConnectionPanel();
     populateGroupControls();
@@ -1189,28 +1619,30 @@ function populateGroupControls() {
     const selected = new Set(Array.from(connGroupSelect?.selectedOptions || []).map(option => Number(option.value)));
     if (connGroupSelect) {
         connGroupSelect.innerHTML = "";
-        groups.forEach(group => { const option = new Option(group.name, group.id); option.selected = selected.has(group.id); connGroupSelect.appendChild(option); });
+        (groups || []).forEach(group => { const option = new Option(group.name, group.id); option.selected = selected.has(group.id); connGroupSelect.appendChild(option); });
     }
     if (queryGroupFilter) {
         queryGroupFilter.innerHTML = '<option value="all">All Groups</option><option value="ungrouped">Ungrouped</option>';
-        groups.forEach(group => queryGroupFilter.appendChild(new Option(group.name, group.id)));
+        (groups || []).forEach(group => queryGroupFilter.appendChild(new Option(group.name, group.id)));
         queryGroupFilter.value = [...queryGroupFilter.options].some(option => option.value === currentFilter) ? currentFilter : "all";
     }
     if (connectionsGroupFilter) {
         const listValue = connectionsGroupFilter.value || "all";
         connectionsGroupFilter.innerHTML = '<option value="all">All Groups</option><option value="ungrouped">Ungrouped</option>';
-        groups.forEach(group => connectionsGroupFilter.appendChild(new Option(group.name, group.id)));
+        (groups || []).forEach(group => connectionsGroupFilter.appendChild(new Option(group.name, group.id)));
         connectionsGroupFilter.value = [...connectionsGroupFilter.options].some(option => option.value === listValue) ? listValue : "all";
     }
 }
 function visibleConnections() {
     const group = queryGroupFilter?.value || "all", type = queryDbTypeFilter?.value || "all";
     const search = (queryDbSearch?.value || "").trim().toLocaleLowerCase();
-    return connections.filter(connection => {
-        const groupMatch = group === "all" || (group === "ungrouped" ? !connection.group_ids.length : connection.group_ids.includes(Number(group)));
+    return (connections || []).filter(connection => {
+        const groupIds = connection.group_ids || [];
+        const groupMatch = group === "all" || (group === "ungrouped" ? !groupIds.length : groupIds.includes(Number(group)));
         const typeMatch = type === "all" || connection.db_type === type;
-        const databaseName = String(connection.database || "").toLocaleLowerCase();
-        return groupMatch && typeMatch && (!search || databaseName.includes(search));
+        const searchMatch = !search || [connection.name, connection.database, connection.host, connection.username]
+            .some(value => String(value || "").toLocaleLowerCase().includes(search));
+        return groupMatch && typeMatch && searchMatch;
     });
 }
 async function renderQueryConnectionPanel() {
@@ -1221,14 +1653,25 @@ async function renderQueryConnectionPanel() {
     if (!items.length) { connectionsPanelList.innerHTML = '<p class="panel-empty">No authorized connections match these filters.</p>'; return; }
     if (items.length === 1 && selectedConnectionIds.size === 0) {
         selectedConnectionIds.add(items[0].id);
-        await ensureSchemaMetadata(items[0].id);
+        ensureSchemaMetadata(items[0].id);
     }
-    if (selectedConnectionIds.size === 1) await ensureSchemaMetadata(Array.from(selectedConnectionIds)[0]);
+    if (selectedConnectionIds.size === 1) {
+        ensureSchemaMetadata(Array.from(selectedConnectionIds)[0]);
+    }
     items.forEach(connection => {
-        const item = document.createElement("button"); item.type = "button"; item.className = `connection-panel-item${selectedConnectionIds.has(connection.id) ? " selected" : ""}`;
-        item.innerHTML = `<span class="connection-panel-info"><span class="connection-panel-name">${escapeHtml(connection.name)}</span></span><span class="connection-panel-check">${selectedConnectionIds.has(connection.id) ? "✓" : ""}</span>`;
+        const item = document.createElement("button");
+        item.type = "button";
+        const isSelected = selectedConnectionIds.has(connection.id);
+        item.className = `connection-panel-item${isSelected ? " selected" : ""}`;
+        item.dataset.connectionId = connection.id;
+        item.innerHTML = `<span class="connection-panel-info"><span class="connection-panel-name">${escapeHtml(connection.name)}</span></span><span class="connection-panel-check">${isSelected ? "✓" : ""}</span>`;
         item.addEventListener("click", () => {
-            selectedConnectionIds.has(connection.id) ? selectedConnectionIds.delete(connection.id) : selectedConnectionIds.add(connection.id);
+            if (selectedConnectionIds.has(connection.id)) {
+                selectedConnectionIds.delete(connection.id);
+            } else {
+                selectedConnectionIds.add(connection.id);
+                ensureSchemaMetadata(connection.id);
+            }
             renderQueryConnectionPanel();
             syncConnectionSelectionToActiveTab();
         });
@@ -1237,12 +1680,14 @@ async function renderQueryConnectionPanel() {
     syncConnectionSelectionToActiveTab();
 }
 function renderConnectionsList() {
+    if (!connectionsListContainer) return;
     connectionsListContainer.innerHTML = "";
     const groupFilter = connectionsGroupFilter?.value || "all";
     const dbTypeFilter = connectionsDbTypeFilter?.value || "all";
     const searchTerm = (connectionsSearchInput?.value || "").trim().toLocaleLowerCase();
-    const visible = connections.filter(connection => {
-        const groupMatch = groupFilter === "all" || (groupFilter === "ungrouped" ? !connection.group_ids.length : connection.group_ids.includes(Number(groupFilter)));
+    const visible = (connections || []).filter(connection => {
+        const groupIds = connection.group_ids || [];
+        const groupMatch = groupFilter === "all" || (groupFilter === "ungrouped" ? !groupIds.length : groupIds.includes(Number(groupFilter)));
         const searchMatch = !searchTerm || [connection.name, connection.host, connection.database, connection.username, connection.db_type]
             .some(value => String(value || "").toLocaleLowerCase().includes(searchTerm));
         return groupMatch && searchMatch && (dbTypeFilter === "all" || connection.db_type === dbTypeFilter);
@@ -1251,8 +1696,8 @@ function renderConnectionsList() {
     const byGroup = new Map();
     visible.forEach(connection => {
         const assignedGroups = groupFilter !== "all" && groupFilter !== "ungrouped"
-            ? groups.filter(group => group.id === Number(groupFilter))
-            : connection.groups;
+            ? (groups || []).filter(group => group.id === Number(groupFilter))
+            : (connection.groups || []);
         const groupNames = assignedGroups?.length ? assignedGroups.map(group => group.name) : ["Ungrouped"];
         groupNames.forEach(name => {
             if (!byGroup.has(name)) byGroup.set(name, []);
@@ -1267,12 +1712,12 @@ function renderConnectionsList() {
         items.forEach(connection => {
             const card = document.createElement("div"); card.className = "connection-card";
             const assignedGroups = groupFilter !== "all" && groupFilter !== "ungrouped"
-                ? groups.filter(group => group.id === Number(groupFilter))
-                : connection.groups;
-            const groupLabels = assignedGroups.map(group => `<span class="connection-group-badge">${escapeHtml(group.name)}</span>`).join("");
+                ? (groups || []).filter(group => group.id === Number(groupFilter))
+                : (connection.groups || []);
+            const groupLabels = (assignedGroups || []).map(group => `<span class="connection-group-badge">${escapeHtml(group.name)}</span>`).join("");
             card.innerHTML = `<div class="connection-header"><h4>${escapeHtml(connection.name)}</h4><span class="db-type-badge">${escapeHtml(connection.db_type)}</span>${groupLabels}</div><div class="connection-details"><p><strong>Host:</strong> ${escapeHtml(connection.host || "N/A")}</p><p><strong>Port:</strong> ${escapeHtml(connection.port || "Default")}</p><p><strong>Database:</strong> ${escapeHtml(connection.database || "N/A")}</p><p><strong>Username:</strong> ${escapeHtml(connection.username || "N/A")}</p><p><strong>Password:</strong> ${connection.has_password ? "Saved (hidden)" : "Not set"}</p></div><div class="connection-actions"><button class="btn btn-icon btn-sm" data-action="test">Test</button>${currentUser?.role === "admin" ? `<button class="btn btn-icon btn-sm" data-action="edit">Edit</button><button class="btn btn-icon btn-sm danger" data-action="delete">Delete</button>` : ""}<button class="btn btn-icon btn-sm" data-action="use">Use</button></div>`;
-            card.querySelector('[data-action="test"]').addEventListener("click", () => testConnection(connection.id));
-            card.querySelector('[data-action="use"]').addEventListener("click", () => useConnection(connection.id));
+            card.querySelector('[data-action="test"]')?.addEventListener("click", () => testConnection(connection.id));
+            card.querySelector('[data-action="use"]')?.addEventListener("click", () => useConnection(connection.id));
             card.querySelector('[data-action="edit"]')?.addEventListener("click", () => showConnectionForm(connection));
             card.querySelector('[data-action="delete"]')?.addEventListener("click", () => deleteConnection(connection.id));
             connectionsListContainer.appendChild(card);
@@ -1365,8 +1810,9 @@ async function deleteConnection(id) { if (!confirm("Delete this connection?")) r
 function useConnection(id) { selectedConnectionIds.add(id); switchView("query-section"); renderQueryConnectionPanel(); syncConnectionSelectionToActiveTab(); }
 
 async function executeQuery(tabId) {
-    const tab = getTabById(tabId);
+    const tab = getTabById(tabId) || getActiveTab();
     if (!tab) return;
+    ensureTabElementReferences(tab);
 
     // Get SQL from CodeMirror or fallback textarea
     let sql = "";
@@ -1378,21 +1824,26 @@ async function executeQuery(tabId) {
 
     if (!sql) return showToast("Enter a SQL query first", "warning");
     if (tab.connectionIds.size === 0) return showToast("Select at least one connection", "warning");
-    
-    tab.executeBtn.disabled = true;
-    tab.executeText.textContent = "Executing...";
-    tab.executeSpinner.classList.remove("hidden");
-    tab.resultsPlaceholder.classList.add("hidden");
-    tab.multiResultsContainer.classList.add("hidden");
-    tab.multiResultsContainer.innerHTML = "";
-    tab.errorContainer.classList.add("hidden");
-    tab.editActions.classList.add("hidden");
-    tab.btnExportCsv.disabled = true;
-    
+
+    if (tab.executeBtn) tab.executeBtn.disabled = true;
+    if (tab.executeText) tab.executeText.textContent = "Executing...";
+    tab.executeSpinner?.classList.remove("hidden");
+    tab.resultsPlaceholder?.classList.add("hidden");
+    tab.singleResultContainer?.classList.add("hidden");
+    if (tab.singleResultContainer) tab.singleResultContainer.innerHTML = "";
+    tab.multiResultsContainer?.classList.add("hidden");
+    if (tab.multiResultsContainer) tab.multiResultsContainer.innerHTML = "";
+    tab.errorContainer?.classList.add("hidden");
+    tab.editActions?.classList.add("hidden");
+    if (tab.btnExportCsv) tab.btnExportCsv.disabled = true;
+
     const limit = parseInt(queryLimitInput?.value) || 1000;
     const connIds = Array.from(tab.connectionIds);
     const isMulti = connIds.length > 1;
-    
+
+    // Get parameters for this tab
+    const parameters = getTabParameters(tab);
+
     try {
         if (isMulti) {
             // Multi-connection execution
@@ -1402,7 +1853,7 @@ async function executeQuery(tabId) {
                     const result = await apiFetch("/api/query", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ connection_id: connId, query: sql, limit })
+                        body: JSON.stringify({ connection_id: connId, query: sql, limit, parameters })
                     });
                     results.push({ connectionId: connId, success: true, data: result });
                 } catch (error) {
@@ -1416,137 +1867,257 @@ async function executeQuery(tabId) {
             const result = await apiFetch("/api/query", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ connection_id: connId, query: sql, limit })
+                body: JSON.stringify({ connection_id: connId, query: sql, limit, parameters })
             });
             renderSingleResult(tab, connId, result);
         }
     } catch (error) {
-        tab.resultsPlaceholder.classList.add("hidden");
-        tab.errorContainer.classList.remove("hidden");
-        tab.errorMessage.textContent = error.message;
-        tab.resultCount.textContent = "0 rows";
-        tab.executionTime.textContent = "0 ms";
+        tab.resultsPlaceholder?.classList.add("hidden");
+        tab.singleResultContainer?.classList.add("hidden");
+        tab.multiResultsContainer?.classList.add("hidden");
+        if (tab.errorMessage) tab.errorMessage.textContent = error.message;
+        tab.errorContainer?.classList.remove("hidden");
+        if (tab.resultCount) tab.resultCount.textContent = "0 rows";
+        if (tab.executionTime) tab.executionTime.textContent = "0 ms";
         showToast(`Query failed: ${error.message}`, "error");
     } finally {
-        tab.executeBtn.disabled = false;
-        tab.executeText.textContent = "Execute";
-        tab.executeSpinner.classList.add("hidden");
+        if (tab.executeBtn) tab.executeBtn.disabled = false;
+        if (tab.executeText) tab.executeText.textContent = "Execute";
+        tab.executeSpinner?.classList.add("hidden");
     }
 }
 
 function renderSingleResult(tab, connId, result) {
-    const connection = connections.find(c => c.id === connId);
+    ensureTabElementReferences(tab);
+    const connection = (connections || []).find(c => c.id === connId);
     const dbName = connection?.name || connId;
 
-    tab.resultsPlaceholder.classList.add("hidden");
-    tab.multiResultsContainer.classList.add("hidden");
-    tab.errorContainer.classList.add("hidden");
+    tab.resultsPlaceholder?.classList.add("hidden");
+    tab.multiResultsContainer?.classList.add("hidden");
+    tab.errorContainer?.classList.add("hidden");
 
     // Build editable grid
-    const { html, editContext, rowCount, columns, rows } = buildEditableGrid(result, tab.id);
+    const { html, editContext, rowCount, columns, rows } = buildEditableGrid(result, tab.id, connId);
     tab.currentEditContext = editContext;
     tab.currentResultData = { columns, rows };
-    tab.resultCount.textContent = `${rowCount} row${rowCount !== 1 ? "s" : ""}`;
-    tab.executionTime.textContent = `${result.execution_time_ms || 0} ms`;
+    if (tab.resultCount) tab.resultCount.textContent = `${rowCount} row${rowCount !== 1 ? "s" : ""}`;
+    if (tab.executionTime) tab.executionTime.textContent = `${result.execution_time_ms || 0} ms`;
 
     if (editContext && (currentUser?.role === "admin" || currentUser?.role === "writer")) {
-        tab.editActions.classList.remove("hidden");
+        tab.editActions?.classList.remove("hidden");
+        const btnApply = document.getElementById(`btn-apply-result-edits-${tab.id}`);
+        if (btnApply) {
+            btnApply.textContent = "Apply";
+            btnApply.disabled = true;
+        }
+        const btnRevert = document.getElementById(`btn-revert-result-edits-${tab.id}`);
+        if (btnRevert) btnRevert.disabled = true;
     } else {
-        tab.editActions.classList.add("hidden");
+        tab.editActions?.classList.add("hidden");
     }
-    tab.btnExportCsv.disabled = rowCount === 0;
+    if (tab.btnExportCsv) tab.btnExportCsv.disabled = rowCount === 0;
     tab.currentExportData = { columns, rows };
 
     // Save HTML to tab for persistence when switching tabs
     tab.resultHtml = html;
     tab.multiResultHtml = null;
 
-    tab.resultsContainer.innerHTML = html;
-    tab.resultsContainer.querySelectorAll("td[contenteditable='true']").forEach(cell => {
-        cell.addEventListener("blur", e => handleCellEdit(tab, e));
-    });
+    if (tab.singleResultContainer) {
+        tab.singleResultContainer.innerHTML = html;
+        tab.singleResultContainer.classList.remove("hidden");
+        tab.singleResultContainer.querySelectorAll("td[contenteditable='true']").forEach(cell => {
+            cell.addEventListener("blur", e => handleCellEdit(tab, e));
+        });
+        if (window.InlineEditingManager) {
+            window.InlineEditingManager.initializeInlineEditing(tab);
+        }
+    }
 }
 
 function renderMultiResults(tab, results) {
-    tab.resultsPlaceholder.classList.add("hidden");
-    tab.errorContainer.classList.add("hidden");
-    tab.multiResultsContainer.classList.remove("hidden");
-    tab.multiResultsContainer.innerHTML = "";
-    tab.editActions.classList.add("hidden");
-    tab.btnExportCsv.disabled = true;
+    ensureTabElementReferences(tab);
+    tab.resultsPlaceholder?.classList.add("hidden");
+    tab.singleResultContainer?.classList.add("hidden");
+    if (tab.singleResultContainer) tab.singleResultContainer.innerHTML = "";
+    tab.errorContainer?.classList.add("hidden");
+    tab.multiResultsContainer?.classList.remove("hidden");
+    if (tab.multiResultsContainer) tab.multiResultsContainer.innerHTML = "";
+    tab.editActions?.classList.add("hidden");
+    if (tab.btnExportCsv) tab.btnExportCsv.disabled = true;
 
     let totalRows = 0;
     let multiHtml = "";
     results.forEach(r => {
-        const connection = connections.find(c => c.id === r.connectionId);
+        const connection = (connections || []).find(c => c.id === r.connectionId);
         const dbName = connection?.name || r.connectionId;
 
         const section = document.createElement("div");
         section.className = "multi-result-section";
 
         if (r.success) {
-            const { html, rowCount } = buildEditableGrid(r.data, tab.id);
+            const { html, rowCount } = buildEditableGrid(r.data, tab.id, r.connectionId);
             totalRows += rowCount;
-            const sectionHtml = `<h4>${escapeHtml(dbName)} (${rowCount} row${rowCount !== 1 ? "s" : ""})</h4>${html}`;
+            const execTime = r.data?.execution_time_ms;
+            const sectionHtml = `
+                <div class="multi-result-header">
+                    <div class="multi-result-db-name">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                        <span>${escapeHtml(dbName)}</span>
+                    </div>
+                    <div class="multi-result-meta">
+                        <span class="badge">${rowCount} row${rowCount !== 1 ? "s" : ""}</span>
+                        ${execTime !== undefined ? `<span class="badge">${execTime} ms</span>` : ""}
+                    </div>
+                </div>
+                <div class="table-scroll-container">${html}</div>
+            `;
             section.innerHTML = sectionHtml;
             multiHtml += sectionHtml;
         } else {
-            const sectionHtml = `<h4>${escapeHtml(dbName)}</h4><div class="error-container"><h4>Error</h4><pre>${escapeHtml(r.error)}</pre></div>`;
+            const sectionHtml = `
+                <div class="multi-result-header error-header">
+                    <div class="multi-result-db-name">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                        <span>${escapeHtml(dbName)}</span>
+                    </div>
+                    <div class="multi-result-meta">
+                        <span class="badge badge-error">Failed</span>
+                    </div>
+                </div>
+                <div class="error-container" style="padding: 1rem;">
+                    <pre>${escapeHtml(r.error || "Unknown error")}</pre>
+                </div>
+            `;
             section.innerHTML = sectionHtml;
             multiHtml += sectionHtml;
         }
-        tab.multiResultsContainer.appendChild(section);
+        tab.multiResultsContainer?.appendChild(section);
     });
 
     // Save HTML to tab for persistence when switching tabs
     tab.multiResultHtml = multiHtml;
     tab.resultHtml = null;
 
-    tab.resultCount.textContent = `${totalRows} total row${totalRows !== 1 ? "s" : ""}`;
-    tab.executionTime.textContent = `${results.reduce((sum, r) => sum + (r.data?.execution_time_ms || 0), 0)} ms`;
+    if (tab.resultCount) tab.resultCount.textContent = `${totalRows} total row${totalRows !== 1 ? "s" : ""}`;
+    if (tab.executionTime) tab.executionTime.textContent = `${results.reduce((sum, r) => sum + (r.data?.execution_time_ms || 0), 0)} ms`;
 }
 
-function buildEditableGrid(data, tabId) {
+function buildEditableGrid(data, tabId, connId) {
     // Handle both full result object (has data.columns, data.data) and direct result
     const result = data?.data ? data : { data: data };
     const columns = result.data?.columns || result.columns;
     const rows = result.data?.data || result.rows || result.data || [];
 
-    if (!columns || !rows) return { html: "<p>No data returned</p>", editContext: null, rowCount: 0, columns: [], rows: [] };
+    if (!columns || !rows) return { html: '<div class="empty-state table-empty-state"><p>No data returned</p></div>', editContext: null, rowCount: 0, columns: [], rows: [] };
 
     const rowCount = rows.length;
 
-    if (rowCount === 0) return { html: "<p>No rows returned</p>", editContext: null, rowCount: 0, columns, rows };
+    if (rowCount === 0) return { html: '<div class="empty-state table-empty-state"><p>No rows returned</p></div>', editContext: null, rowCount: 0, columns, rows };
     
     // Determine if editable (single connection, simple SELECT with PK)
     const activeTab = getTabById(tabId);
     const isEditable = activeTab?.connectionIds.size === 1 &&
-                       result.edit_context &&
+                       result.edit_context?.editable &&
                        (currentUser?.role === "admin" || currentUser?.role === "writer");
 
     let editContext = null;
     if (isEditable && result.edit_context) {
         editContext = {
-            connection_id: result.edit_context.connection_id,
+            connection_id: connId || Array.from(activeTab?.connectionIds || [])[0],
+            query: activeTab?.query || "",
             table: result.edit_context.table,
             key_column: result.edit_context.key_column,
             columns: columns
         };
     }
+
+    // Detect column data types based on non-null row values
+    const columnTypes = {};
+    const sampleLimit = Math.min(rows.length, 100);
+    columns.forEach(col => {
+        let hasNonNull = false;
+        let allNumber = true;
+        let isInteger = true;
+        let allBoolean = true;
+        let allDate = true;
+
+        for (let i = 0; i < sampleLimit; i++) {
+            const val = rows[i]?.[col];
+            if (val === null || val === undefined) continue;
+            hasNonNull = true;
+
+            if (typeof val !== "boolean") {
+                allBoolean = false;
+            }
+
+            if (typeof val === "number") {
+                if (!Number.isInteger(val)) isInteger = false;
+            } else if (typeof val === "string" && val.trim() !== "" && !isNaN(Number(val)) && !isNaN(parseFloat(val))) {
+                if (!/^-?\d+$/.test(val.trim())) isInteger = false;
+            } else {
+                allNumber = false;
+            }
+
+            if (typeof val === "string") {
+                const isIsoDate = /^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(val.trim());
+                if (!isIsoDate) allDate = false;
+            } else {
+                allDate = false;
+            }
+        }
+
+        if (!hasNonNull) {
+            columnTypes[col] = "text";
+        } else if (allBoolean) {
+            columnTypes[col] = "boolean";
+        } else if (allNumber) {
+            columnTypes[col] = isInteger ? "integer" : "float";
+        } else if (allDate) {
+            columnTypes[col] = "date";
+        } else {
+            columnTypes[col] = "text";
+        }
+    });
     
     // Build table HTML
     let html = `<table class="excel-grid"><thead><tr>`;
-    columns.forEach(col => { html += `<th>${escapeHtml(col)}</th>`; });
+    html += `<th class="col-index" title="Row Index">#</th>`;
+    columns.forEach(col => {
+        const type = columnTypes[col] || "text";
+        let alignClass = "col-text";
+        if (type === "integer" || type === "float") alignClass = "col-number";
+        else if (type === "boolean") alignClass = "col-center";
+        else if (type === "date") alignClass = "col-date";
+        html += `<th class="${alignClass}" data-column="${escapeHtml(col)}" data-type="${type}">${escapeHtml(col)}</th>`;
+    });
     html += `</tr></thead><tbody>`;
     
     rows.forEach((row, rowIdx) => {
         html += `<tr>`;
+        html += `<td class="row-index" title="Row ${rowIdx + 1}">${rowIdx + 1}</td>`;
         columns.forEach((col, colIdx) => {
             const value = row[col];
-            const displayValue = value === null ? '<span class="null-value">NULL</span>' : escapeHtml(String(value));
-            const editable = isEditable && col !== editContext?.key_column ? ' contenteditable="true"' : "";
+            const type = columnTypes[col] || "text";
+
+            let displayValue = "";
+            let isNull = false;
+            if (value === null || value === undefined) {
+                displayValue = '<span class="null-badge">NULL</span>';
+                isNull = true;
+            } else if (typeof value === "boolean") {
+                displayValue = `<span class="bool-badge bool-${value}">${value}</span>`;
+            } else if (type === "integer" || type === "float") {
+                displayValue = `<span class="num-val">${escapeHtml(String(value))}</span>`;
+            } else if (type === "date") {
+                displayValue = `<span class="date-val">${escapeHtml(String(value))}</span>`;
+            } else {
+                displayValue = escapeHtml(String(value));
+            }
+
+            const editable = isEditable && col !== editContext?.key_column ? ' contenteditable="true" data-editable="true"' : "";
             const keyAttr = col === editContext?.key_column ? ` data-key="${escapeHtml(String(value))}"` : "";
-            html += `<td${editable}${keyAttr}>${displayValue}</td>`;
+            const colTypeClass = `type-${type} col-type-${type}${isNull ? " is-null" : ""}`;
+            html += `<td class="${colTypeClass}"${editable}${keyAttr} data-column="${escapeHtml(col)}" data-column-index="${colIdx}" data-row-index="${rowIdx}">${displayValue}</td>`;
         });
         html += `</tr>`;
     });
@@ -1557,48 +2128,89 @@ function buildEditableGrid(data, tabId) {
 
 function handleCellEdit(tab, event) {
     const cell = event.target;
+    if (cell.classList.contains("row-index")) return;
     const row = cell.closest("tr");
-    const keyCell = row.querySelector("[data-key]");
+    const keyCell = row?.querySelector("[data-key]");
     const keyValue = keyCell?.dataset.key;
-    const column = cell.cellIndex;
+    const columnIdx = cell.dataset.columnIndex !== undefined ? parseInt(cell.dataset.columnIndex, 10) : cell.cellIndex;
+    const columnName = cell.dataset.column || tab.currentResultData?.columns?.[columnIdx] || cell.closest("table")?.querySelectorAll("th")[cell.cellIndex]?.textContent;
     const newValue = cell.textContent.trim() === "NULL" ? null : cell.textContent;
-    const originalRow = tab.currentResultData?.rows?.[row.rowIndex - 1];
-    const originalValue = originalRow?.[tab.currentResultData.columns[column]];
+    const rowIdx = cell.dataset.rowIndex !== undefined ? parseInt(cell.dataset.rowIndex, 10) : (row ? row.rowIndex - 1 : 0);
+    const originalRow = tab.currentResultData?.rows?.[rowIdx];
+    const originalValue = originalRow?.[columnName];
     
+    const editKey = `${rowIdx}:${columnIdx}`;
     if (originalValue !== newValue) {
-        tab.pendingEdits.set(`${row.rowIndex}:${column}`, {
-            keyValue,
-            column,
-            newValue,
-            originalValue
+        tab.pendingEdits.set(editKey, {
+            key_value: keyValue,
+            keyValue: keyValue,
+            column: columnName,
+            columnName: columnName,
+            value: newValue,
+            newValue: newValue,
+            originalValue: originalValue
         });
     } else {
-        tab.pendingEdits.delete(`${row.rowIndex}:${column}`);
+        tab.pendingEdits.delete(editKey);
+    }
+    const count = tab.pendingEdits.size;
+    const btnApply = document.getElementById(`btn-apply-result-edits-${tab.id}`);
+    if (btnApply) {
+        btnApply.textContent = count > 0 ? `Apply (${count})` : "Apply";
+        btnApply.disabled = count === 0;
+    }
+    const btnRevert = document.getElementById(`btn-revert-result-edits-${tab.id}`);
+    if (btnRevert) {
+        btnRevert.disabled = count === 0;
     }
 }
 
 async function applyResultEdits(tabId) {
     const tab = getTabById(tabId);
-    if (!tab || tab.pendingEdits.size === 0) return;
+    if (!tab) return;
     
     const edits = Array.from(tab.pendingEdits.values());
+    if (edits.length === 0) return;
+    
     const firstEdit = edits[0];
-    if (!firstEdit.keyValue) return showToast("Cannot identify rows to update (missing key column)", "error");
+    if (!firstEdit.keyValue && firstEdit.key_value === undefined) {
+        return showToast("Cannot identify rows to update (missing key column)", "error");
+    }
+    
+    const connId = tab.currentEditContext?.connection_id || Array.from(tab.connectionIds)[0];
+    const query = tab.currentEditContext?.query || tab.query;
+    if (!connId || !query) {
+        return showToast("Missing connection or query for edit application", "error");
+    }
     
     try {
+        const payloadEdits = edits.map(e => ({
+            key_value: e.key_value ?? e.keyValue,
+            column: typeof e.column === "string" ? e.column : (e.columnName || tab.currentResultData?.columns?.[e.column]),
+            value: e.value !== undefined ? e.value : e.newValue
+        }));
+        
         const result = await apiFetch("/api/query/edits", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                connection_id: tab.currentEditContext.connection_id,
-                table: tab.currentEditContext.table,
-                key_column: tab.currentEditContext.key_column,
-                key_value: firstEdit.keyValue,
-                changes: edits.map(e => ({ column: e.column, value: e.newValue }))
+                connection_id: connId,
+                query: query,
+                edits: payloadEdits
             })
         });
         showToast(`Applied ${result.updated} change${result.updated !== 1 ? "s" : ""}`, "success");
         tab.pendingEdits.clear();
+        const btnApply = document.getElementById(`btn-apply-result-edits-${tab.id}`);
+        if (btnApply) {
+            btnApply.textContent = "Apply";
+            btnApply.disabled = true;
+        }
+        const btnRevert = document.getElementById(`btn-revert-result-edits-${tab.id}`);
+        if (btnRevert) btnRevert.disabled = true;
+        if (window.InlineEditingManager) {
+            window.InlineEditingManager.cleanupInlineEditing(tab.id);
+        }
         executeQuery(tab.id); // Re-execute to refresh
     } catch (error) {
         showToast(`Apply failed: ${error.message}`, "error");
@@ -1607,7 +2219,18 @@ async function applyResultEdits(tabId) {
 
 function revertResultEdits(tabId) {
     const tab = getTabById(tabId);
+    if (!tab) return;
     tab.pendingEdits.clear();
+    const btnApply = document.getElementById(`btn-apply-result-edits-${tab.id}`);
+    if (btnApply) {
+        btnApply.textContent = "Apply";
+        btnApply.disabled = true;
+    }
+    const btnRevert = document.getElementById(`btn-revert-result-edits-${tab.id}`);
+    if (btnRevert) btnRevert.disabled = true;
+    if (window.InlineEditingManager) {
+        window.InlineEditingManager.cleanupInlineEditing(tab.id);
+    }
     executeQuery(tab.id);
     showToast("Changes reverted", "info");
 }
@@ -1734,3 +2357,22 @@ function cacheDOMElements() {
 }
 
 function showToast(message, type = "info") { if (!toastContainer) return; toastContainer.innerHTML = `<div class="toast toast-${type}"><div class="toast-content"><span class="toast-message">${escapeHtml(message)}</span></div></div>`; setTimeout(() => { toastContainer.innerHTML = ""; }, 3500); }
+
+// Global exports for modular scripts
+window.queryTabs = queryTabs;
+window.getTabById = getTabById;
+window.getActiveTab = getActiveTab;
+window.updateTabName = updateTabName;
+window.executeQuery = executeQuery;
+window.updateQueryCheckForTab = updateQueryCheckForTab;
+window.updateQuerySuggestionsForTab = updateQuerySuggestionsForTab;
+window.applyResultEdits = applyResultEdits;
+window.revertResultEdits = revertResultEdits;
+window.switchView = switchView;
+window.showToast = showToast;
+window.escapeHtml = escapeHtml;
+window.apiFetch = apiFetch;
+window.buildEditableGrid = buildEditableGrid;
+window.handleCellEdit = handleCellEdit;
+window.renderSingleResult = renderSingleResult;
+window.renderMultiResults = renderMultiResults;

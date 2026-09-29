@@ -20,7 +20,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -85,7 +85,7 @@ USE_POSTGRES = bool(DATABASE_URL)
 app = FastAPI(
     title="Query Execute",
     description="A secure, multi-database SQL query workspace.",
-    version="1.1.0",
+    version="1.1.1",
 )
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -849,11 +849,13 @@ class QueryRequest(BaseModel):
     connection_id: str = Field(..., min_length=1, max_length=50)
     query: str = Field(..., min_length=1, max_length=200_000)
     limit: Optional[int] = Field(default=1000, ge=1, le=10000)
+    parameters: Optional[Any] = Field(default=None, description="Query bind parameters (dict or list)")
 
 
 class QueryValidationRequest(BaseModel):
     connection_id: str = Field(..., min_length=1, max_length=50)
     query: str = Field(..., min_length=1, max_length=200_000)
+    parameters: Optional[Any] = Field(default=None, description="Query bind parameters for validation (dict or list)")
 
 
 class QueryHistoryItem(BaseModel):
@@ -1875,8 +1877,36 @@ async def check_query(payload: QueryValidationRequest, user: Dict[str, Any] = De
             raise HTTPException(status_code=409, detail="Saved connection credentials need to be updated") from exc
     finally:
         conn.close()
+
+    # Check parameter validity if provided
+    if payload.parameters:
+        from app.db_service import validate_query_parameters
+        param_valid, param_error = validate_query_parameters(payload.query, payload.parameters, params["db_type"])
+        if not param_valid:
+            return {"valid": False, "error": param_error}
+
     ok, error, _, _ = validate_query(payload.query, user.get("role", "viewer"), params["db_type"], params)
     return {"valid": ok, "error": error}
+
+
+@app.post("/api/query/parameters")
+async def get_query_parameters(payload: QueryValidationRequest, user: Dict[str, Any] = Depends(current_user)):
+    """Parse and return detected bind parameters from a query."""
+    from app.db_service import parse_query_parameters
+    conn = get_db_conn()
+    try:
+        row = _authorized_connection_row(conn, payload.connection_id, user)
+        if not row:
+            raise HTTPException(status_code=404, detail="Connection not found or not authorized")
+        try:
+            params = _connection_params(row)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail="Saved connection credentials need to be updated") from exc
+    finally:
+        conn.close()
+
+    detected = parse_query_parameters(payload.query)
+    return {"parameters": detected}
 
 
 @app.post("/api/query")
@@ -1899,6 +1929,7 @@ async def execute_query_endpoint(payload: QueryRequest, user: Dict[str, Any] = D
             query=payload.query,
             limit=payload.limit or 1000,
             role=user["role"],
+            parameters=payload.parameters,
             **params,
         )
         elapsed = int((time.time() - start_time) * 1000)
@@ -2087,5 +2118,149 @@ async def clear_query_history(user: Dict[str, Any] = Depends(current_user)):
         deleted = cur.rowcount
         cur.close()
         return {"success": True, "deleted": deleted}
+    finally:
+        conn.close()
+
+
+# Snippets API endpoints
+class SnippetInput(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    category: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    sql: str = Field(..., min_length=1)
+    is_favorite: bool = False
+    is_shared: bool = False
+
+
+class SnippetResponse(BaseModel):
+    id: str
+    name: str
+    category: Optional[str]
+    description: Optional[str]
+    sql: str
+    is_favorite: bool
+    is_shared: bool
+    user_id: int
+    created_at: str
+    updated_at: str
+
+
+def _snippet_response(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": str(row["id"]),
+        "name": row["name"],
+        "category": row["category"],
+        "description": row["description"],
+        "sql": row["sql"],
+        "is_favorite": bool(row.get("is_favorite", 0)),
+        "is_shared": bool(row.get("is_shared", 0)),
+        "user_id": row["user_id"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+@app.get("/api/snippets", response_model=List[SnippetResponse])
+async def list_snippets(user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        if user["role"] == "admin":
+            cur.execute("SELECT * FROM snippets ORDER BY name")
+        else:
+            cur.execute(
+                """SELECT DISTINCT s.* FROM snippets s
+                   WHERE s.user_id = %s OR s.is_shared = TRUE
+                   ORDER BY s.name""" if USE_POSTGRES else
+                """SELECT DISTINCT s.* FROM snippets s
+                   WHERE s.user_id = ? OR s.is_shared = 1
+                   ORDER BY s.name""",
+                (user["id"],),
+            )
+        rows = _rows(cur)
+        cur.close()
+        return [_snippet_response(row) for row in rows]
+    finally:
+        conn.close()
+
+
+@app.post("/api/snippets", response_model=SnippetResponse)
+async def create_snippet(payload: SnippetInput, user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        snippet_id = str(uuid.uuid4())
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO snippets (id, name, category, description, sql, is_favorite, is_shared, user_id, created_at, updated_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""" if USE_POSTGRES else
+            """INSERT INTO snippets (id, name, category, description, sql, is_favorite, is_shared, user_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (snippet_id, payload.name, payload.category, payload.description, payload.sql,
+             payload.is_favorite, payload.is_shared, user["id"],
+             datetime.now(timezone.utc).isoformat(), datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        cur.close()
+        cur = _cursor(conn, dict_rows=True)
+        cur.execute("SELECT * FROM snippets WHERE id = %s" if USE_POSTGRES else "SELECT * FROM snippets WHERE id = ?", (snippet_id,))
+        row = _one(cur.fetchone())
+        cur.close()
+        return _snippet_response(row)
+    finally:
+        conn.close()
+
+
+@app.put("/api/snippets/{snippet_id}", response_model=SnippetResponse)
+async def update_snippet(snippet_id: str, payload: SnippetInput, user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        cur.execute("SELECT * FROM snippets WHERE id = %s" if USE_POSTGRES else "SELECT * FROM snippets WHERE id = ?", (snippet_id,))
+        row = _one(cur.fetchone())
+        cur.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Snippet not found")
+        # Check ownership or admin
+        if row["user_id"] != user["id"] and user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Not authorized to edit this snippet")
+
+        cur = conn.cursor()
+        cur.execute(
+            """UPDATE snippets SET name = %s, category = %s, description = %s, sql = %s, is_favorite = %s, is_shared = %s, updated_at = %s
+               WHERE id = %s""" if USE_POSTGRES else
+            """UPDATE snippets SET name = ?, category = ?, description = ?, sql = ?, is_favorite = ?, is_shared = ?, updated_at = ?
+               WHERE id = ?""",
+            (payload.name, payload.category, payload.description, payload.sql,
+             payload.is_favorite, payload.is_shared, datetime.now(timezone.utc).isoformat(), snippet_id),
+        )
+        conn.commit()
+        cur.close()
+        cur = _cursor(conn, dict_rows=True)
+        cur.execute("SELECT * FROM snippets WHERE id = %s" if USE_POSTGRES else "SELECT * FROM snippets WHERE id = ?", (snippet_id,))
+        row = _one(cur.fetchone())
+        cur.close()
+        return _snippet_response(row)
+    finally:
+        conn.close()
+
+
+@app.delete("/api/snippets/{snippet_id}")
+async def delete_snippet(snippet_id: str, user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        cur.execute("SELECT * FROM snippets WHERE id = %s" if USE_POSTGRES else "SELECT * FROM snippets WHERE id = ?", (snippet_id,))
+        row = _one(cur.fetchone())
+        cur.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Snippet not found")
+        if row["user_id"] != user["id"] and user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Not authorized to delete this snippet")
+
+        cur = conn.cursor()
+        cur.execute("DELETE FROM snippets WHERE id = %s" if USE_POSTGRES else "DELETE FROM snippets WHERE id = ?", (snippet_id,))
+        conn.commit()
+        cur.close()
+        return {"success": True}
     finally:
         conn.close()

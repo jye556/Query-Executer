@@ -17,3 +17,5 @@ query_execute.db-*
 *.dump
 *.sql.gz
 *.tar.gz
+.claude/
+node_modules/
