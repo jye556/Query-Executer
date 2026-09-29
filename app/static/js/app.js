@@ -1287,6 +1287,8 @@ async function initialize() {
         initSavedQueriesEvents();
         initScheduledTasksEvents();
         initDashboardEvents();
+        initAIEvents();
+        initDBMonitorEvents();
         initSchemaDiffEvents();
         initGlobalExportEvents();
     } catch (err) {
@@ -1707,6 +1709,7 @@ function switchView(viewId) {
     if (viewId === "history-section") fetchHistory();
     if (viewId === "scheduled-tasks-section") loadScheduledTasks();
     if (viewId === "dashboard-section") loadDashboardMetrics();
+    if (viewId === "db-monitor-section") { loadDBMonitorConnections(); loadDBMonitor(); }
     if (viewId === "snippets-section" && window.SnippetsManager) {
         window.SnippetsManager.loadSnippets().then(() => window.SnippetsManager.renderSnippetsPanel());
     }
@@ -4059,53 +4062,73 @@ function initDashboardEvents() {
     document.getElementById("btn-refresh-dashboard")?.addEventListener("click", loadDashboardMetrics);
 }
 
+
 async function loadDashboardMetrics() {
     const grid = document.getElementById("dashboard-metrics-grid");
     if (!grid) return;
     
-    grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted);">Refreshing metrics...</div>';
+    grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted);">Refreshing dashboard...</div>';
     
     try {
         const response = await fetch("/api/saved-queries");
         if (!response.ok) throw new Error("Failed to fetch queries");
         const queries = await response.json();
         
-        const metricQueries = queries.filter(q => {
+        const dashboardQueries = queries.filter(q => {
             if (!q.tags) return false;
             try {
                 const tags = JSON.parse(q.tags);
-                return tags.includes("metric");
+                return tags.includes("metric") || tags.some(t => t.startsWith("chart_"));
             } catch(e) { return false; }
         });
         
-        if (metricQueries.length === 0) {
-            grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 2rem; border: 1px dashed var(--border); border-radius: 8px;">No metrics found. Save a query and add the tag "metric" to see it here.</div>';
+        if (dashboardQueries.length === 0) {
+            grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 2rem; border: 1px dashed var(--border); border-radius: 8px;">No dashboard items found. Save a query and add the tag "metric", "chart_bar", "chart_line", or "chart_pie" to see it here.</div>';
             return;
         }
         
         grid.innerHTML = "";
         
-        for (const mq of metricQueries) {
+        for (const mq of dashboardQueries) {
+            let tags = [];
+            try { tags = JSON.parse(mq.tags); } catch(e) {}
+            
+            const isMetric = tags.includes("metric");
+            const chartTag = tags.find(t => t.startsWith("chart_"));
+            const chartType = chartTag ? chartTag.replace("chart_", "") : "bar";
+            
             const card = document.createElement("div");
             card.className = "metric-card";
-            card.style = "background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 0.5rem;";
+            // Charts span 2 columns if grid allows
+            card.style = `background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 0.5rem; ${!isMetric ? "grid-column: span 2; min-height: 300px;" : ""}`;
             
             const title = document.createElement("h3");
             title.style = "margin: 0; font-size: 1rem; color: var(--text-muted); font-weight: 500;";
             title.textContent = mq.name;
+            card.appendChild(title);
             
-            const value = document.createElement("div");
-            value.className = "metric-value";
-            value.style = "font-size: 2.5rem; font-weight: 700; color: var(--primary); margin: 0.5rem 0;";
-            value.textContent = "...";
+            const valueContainer = document.createElement("div");
+            valueContainer.style = "flex: 1; display: flex; flex-direction: column; justify-content: center; position: relative;";
+            card.appendChild(valueContainer);
+            
+            if (isMetric) {
+                const value = document.createElement("div");
+                value.className = "metric-value";
+                value.style = "font-size: 2.5rem; font-weight: 700; color: var(--primary); margin: 0.5rem 0;";
+                value.textContent = "...";
+                valueContainer.appendChild(value);
+            } else {
+                // Chart Canvas
+                const canvas = document.createElement("canvas");
+                canvas.style = "width: 100%; height: 250px; display: block;";
+                valueContainer.appendChild(canvas);
+            }
             
             const footer = document.createElement("div");
             footer.style = "font-size: 0.8rem; color: var(--text-muted); margin-top: auto;";
             footer.textContent = "Loading...";
-            
-            card.appendChild(title);
-            card.appendChild(value);
             card.appendChild(footer);
+            
             grid.appendChild(card);
             
             // Execute the query
@@ -4117,24 +4140,210 @@ async function loadDashboardMetrics() {
                         connection_id: mq.connection_id
                     })
                 });
+                
                 if (qRes.success && qRes.results && qRes.results.length > 0) {
-                    const row = qRes.results[0];
-                    const firstVal = Object.values(row)[0];
-                    value.textContent = firstVal !== null ? firstVal : "NULL";
+                    if (isMetric) {
+                        const row = qRes.results[0];
+                        const firstVal = Object.values(row)[0];
+                        const vSpan = valueContainer.querySelector('.metric-value');
+                        if (vSpan) vSpan.textContent = firstVal !== null ? firstVal : "NULL";
+                    } else {
+                        // Draw Chart
+                        const canvas = valueContainer.querySelector('canvas');
+                        const columns = qRes.columns || Object.keys(qRes.results[0]);
+                        const xCol = columns[0];
+                        const yCol = columns[1] || columns[0];
+                        if (canvas && window.drawCanvasChart) {
+                            // Delay slightly so layout calculates size
+                            setTimeout(() => {
+                                window.drawCanvasChart(canvas, chartType, xCol, yCol, qRes.results);
+                            }, 50);
+                        }
+                    }
                     footer.textContent = `Updated just now`;
                 } else {
-                    value.textContent = "-";
-                    value.style.color = "var(--error)";
+                    if (isMetric) {
+                        const vSpan = valueContainer.querySelector('.metric-value');
+                        if (vSpan) {
+                            vSpan.textContent = "-";
+                            vSpan.style.color = "var(--error)";
+                        }
+                    }
                     footer.textContent = qRes.error || "No data returned";
                 }
             } catch (err) {
-                value.textContent = "Err";
-                value.style.color = "var(--error)";
+                if (isMetric) {
+                    const vSpan = valueContainer.querySelector('.metric-value');
+                    if (vSpan) {
+                        vSpan.textContent = "Err";
+                        vSpan.style.color = "var(--error)";
+                    }
+                }
                 footer.textContent = err.message;
             }
         }
         
     } catch (e) {
         grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: var(--error);">${escapeHtml(e.message)}</div>`;
+    }
+}
+
+
+// ── AI Assistant ──
+function initAIEvents() {
+    document.getElementById("btn-ai-assist")?.addEventListener("click", () => {
+        const activeTab = getActiveTab();
+        if (!activeTab || activeTab.connectionIds.size === 0) {
+            showToast("Please select a database connection first.", "warning");
+            return;
+        }
+        document.getElementById("ai-prompt").value = "";
+        document.getElementById("ai-assist-modal").showModal();
+        setTimeout(() => document.getElementById("ai-prompt").focus(), 100);
+    });
+
+    document.getElementById("ai-assist-form")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const activeTab = getActiveTab();
+        if (!activeTab) return;
+        const connId = Array.from(activeTab.connectionIds)[0];
+        if (!connId) return;
+
+        const prompt = document.getElementById("ai-prompt").value;
+        const btn = document.getElementById("btn-submit-ai");
+        btn.disabled = true;
+        btn.textContent = "Generating...";
+
+        try {
+            const response = await apiFetch("/api/ai/text-to-sql", {
+                method: "POST",
+                body: JSON.stringify({ prompt, connection_id: connId })
+            });
+
+            if (response.sql) {
+                // Insert into editor
+                if (activeTab.editorElement && activeTab.editorElement.editorView) {
+                    const view = activeTab.editorElement.editorView;
+                    const doc = view.state.doc;
+                    // Append if not empty, otherwise replace
+                    if (doc.toString().trim() === "") {
+                        view.dispatch({ changes: { from: 0, to: doc.length, insert: response.sql } });
+                    } else {
+                        view.dispatch({ changes: { from: doc.length, insert: "\n\n" + response.sql } });
+                    }
+                } else if (activeTab.editorElement) {
+                    activeTab.editorElement.value += (activeTab.editorElement.value ? "\n\n" : "") + response.sql;
+                }
+                
+                // Manually trigger change
+                tab.query = response.sql; // This gets overwritten by the editor listener but safe fallback
+                
+                document.getElementById("ai-assist-modal").close();
+                showToast("SQL generated successfully!", "success");
+            }
+        } catch (err) {
+            showToast("AI Generation failed: " + err.message, "error");
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Generate SQL";
+        }
+    });
+}
+
+
+// ── DB Monitor ──
+function initDBMonitorEvents() {
+    document.getElementById("btn-refresh-monitor")?.addEventListener("click", loadDBMonitor);
+    document.getElementById("db-monitor-connection-select")?.addEventListener("change", loadDBMonitor);
+}
+
+async function loadDBMonitorConnections() {
+    const select = document.getElementById("db-monitor-connection-select");
+    if (!select) return;
+    try {
+        const response = await fetch("/api/connections");
+        const connections = await response.json();
+        
+        const currentVal = select.value;
+        select.innerHTML = '<option value="">Select Connection...</option>';
+        connections.forEach(c => {
+            const opt = document.createElement("option");
+            opt.value = c.id;
+            opt.textContent = c.name;
+            select.appendChild(opt);
+        });
+        if (currentVal) select.value = currentVal;
+    } catch(e) {}
+}
+
+async function loadDBMonitor() {
+    const select = document.getElementById("db-monitor-connection-select");
+    const tbody = document.getElementById("db-monitor-tbody");
+    if (!select || !tbody) return;
+    
+    const connId = select.value;
+    if (!connId) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Select a connection to monitor...</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Loading sessions...</td></tr>';
+    
+    try {
+        const response = await fetch(`/api/connections/${connId}/monitor/sessions`);
+        if (!response.ok) throw new Error("Failed to load sessions");
+        const data = await response.json();
+        const sessions = data.sessions || [];
+        
+        if (sessions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No active sessions found.</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = "";
+        sessions.forEach(s => {
+            // Postgres vs MySQL differences
+            const pid = s.pid || s.Id;
+            const user = s.usename || s.User;
+            const state = s.state || s.Command;
+            const duration = s.duration_sec || s.Time;
+            const query = s.query || s.Info || "";
+            
+            if (!pid && s.info) {
+                // SQLite or unsupported
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">${escapeHtml(s.info)}</td></tr>`;
+                return;
+            }
+            
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${escapeHtml(pid)}</td>
+                <td>${escapeHtml(user)}</td>
+                <td>${escapeHtml(state)}</td>
+                <td>${escapeHtml(duration !== null ? Number(duration).toFixed(2) + 's' : '-')}</td>
+                <td style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(query)}">${escapeHtml(query)}</td>
+                <td>
+                    <button class="btn btn-sm btn-ghost btn-kill-session" style="color:var(--error);" data-id="${pid}" title="Kill Session">Kill</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+        
+        tbody.querySelectorAll('.btn-kill-session').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                if (!confirm("Are you sure you want to kill this database session? This may interrupt active queries.")) return;
+                const pid = e.target.closest('button').dataset.id;
+                try {
+                    await apiFetch(`/api/connections/${connId}/monitor/kill/${pid}`, { method: "POST" });
+                    showToast(`Session ${pid} terminated`, "success");
+                    loadDBMonitor();
+                } catch (err) {
+                    showToast("Failed to kill session: " + err.message, "error");
+                }
+            });
+        });
+        
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--error);">${escapeHtml(e.message)}</td></tr>`;
     }
 }

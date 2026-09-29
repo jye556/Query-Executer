@@ -111,6 +111,13 @@
                                 Connections
                             </a>
                         </li>
+                        
+                        <li class="admin-only">
+                            <a href="#" class="sidebar-link" data-view="db-monitor-section">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-9 5 18 2-9h5"/></svg>
+                                DB Monitor
+                            </a>
+                        </li>
                         <li class="admin-only">
                             <a href="#" class="sidebar-link" data-view="users-section">Users</a>
                         </li>
@@ -685,6 +692,32 @@
                     <div class="form-actions" style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.5rem;">
                         <button type="button" class="btn btn-secondary" data-close-modal="import-csv-modal">Cancel</button>
                         <button type="submit" class="btn btn-primary" id="btn-submit-import">Import Data</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </dialog>
+
+
+    <!-- AI Assist Modal -->
+    <dialog id="ai-assist-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2 style="display: flex; align-items: center; gap: 0.5rem;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+                    AI SQL Assistant
+                </h2>
+                <button type="button" class="modal-close" data-close-modal="ai-assist-modal" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted" style="margin-bottom: 1rem;">Describe the data you want to retrieve in plain English, and AI will generate the SQL query for you.</p>
+                <form id="ai-assist-form">
+                    <div class="form-group">
+                        <textarea id="ai-prompt" name="prompt" required class="form-control" rows="3" placeholder="e.g. Show me the top 10 users who signed up last month ordered by revenue..."></textarea>
+                    </div>
+                    <div class="form-actions" style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.5rem;">
+                        <button type="button" class="btn btn-secondary" data-close-modal="ai-assist-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="btn-submit-ai">Generate SQL</button>
                     </div>
                 </form>
             </div>
