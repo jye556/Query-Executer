@@ -95,6 +95,7 @@ async function apiFetch(url, options = {}) {
 // --- Query Tab Management ---
 
 function createQueryTab(initialQuery = "") {
+    scheduleWorkspaceSave();
     const tabId = `tab-${++tabCounter}`;
     const tab = {
         id: tabId,
@@ -599,11 +600,7 @@ function fallbackToTextarea(tab) {
 
     // Auto-save query to localStorage on input
     const saveQueryToStorage = () => {
-        try {
-            const savedTabs = JSON.parse(localStorage.getItem("qe_saved_queries") || "{}");
-            savedTabs[tab.id] = tab.query;
-            localStorage.setItem("qe_saved_queries", JSON.stringify(savedTabs));
-        } catch (_) {}
+        scheduleWorkspaceSave();
     };
     editor.addEventListener("input", saveQueryToStorage);
 
@@ -760,6 +757,7 @@ function insertSuggestionForTab(tab, value) {
 }
 
 function switchTab(tabId) {
+    scheduleWorkspaceSave();
     if (tabId === activeTabId) return;
     activeTabId = tabId;
     renderQueryTabs();
@@ -829,6 +827,7 @@ function addQueryTab() {
 }
 
 function closeQueryTab(tabId) {
+    scheduleWorkspaceSave();
     const index = queryTabs.findIndex(t => t.id === tabId);
     if (index === -1) return;
 
@@ -1207,26 +1206,64 @@ function loadTabConnectionSelection(tab) {
     }
 }
 
-function initializeQueryTabs() {
+async function initializeQueryTabs() {
     if (queryTabs.length === 0) {
-        // Load saved queries from localStorage
-        let savedQueries = {};
-        try {
-            savedQueries = JSON.parse(localStorage.getItem("qe_saved_queries") || "{}");
-        } catch (_) {}
-
+        isRestoringWorkspace = true;
+        
         // Load editor preferences
+        try { editorPreferences = JSON.parse(localStorage.getItem("qe_editor_preferences") || "{}"); } 
+        catch (_) { editorPreferences = {}; }
+
+        let state = null;
         try {
-            editorPreferences = JSON.parse(localStorage.getItem("qe_editor_preferences") || "{}");
-        } catch (_) {
-            editorPreferences = {};
+            const data = await apiFetch("/api/workspace");
+            if (data && data.state_json) state = JSON.parse(data.state_json);
+        } catch (e) {
+            console.warn("Failed to fetch workspace state", e);
         }
 
-        const tab = createQueryTab(savedQueries[`tab-1`] || "");
-        activeTabId = tab.id;
+        if (state && state.tabs && state.tabs.length > 0) {
+            queryTabs.length = 0; // Clear
+            state.tabs.forEach(tState => {
+                const tab = createQueryTab(tState.query || "");
+                tab.id = tState.id || tab.id; // Restore ID if possible, else keep generated
+                tab.name = tState.name || tab.name;
+                tab.connectionIds = new Set(tState.connectionIds || []);
+            });
+            activeTabId = state.activeTabId || queryTabs[0].id;
+            
+            // Ensure activeTabId actually exists in loaded tabs
+            if (!queryTabs.some(t => t.id === activeTabId)) {
+                activeTabId = queryTabs[0].id;
+            }
+        } else {
+            // Fallback to local storage (legacy) or empty tab
+            let savedQueries = {};
+            try { savedQueries = JSON.parse(localStorage.getItem("qe_saved_queries") || "{}"); } catch (_) {}
+            const tab = createQueryTab(savedQueries[`tab-1`] || "");
+            activeTabId = tab.id;
+        }
+
         renderQueryTabs();
         renderTabPanels();
-        loadTabConnectionSelection(tab);
+        
+        // Setup editors for all loaded tabs
+        queryTabs.forEach(tab => {
+            const editorEl = document.getElementById(`editor-${tab.id}`);
+            if (editorEl) {
+                tab.editorElement = editorEl;
+                if (window.EditorHighlighting) {
+                    window.EditorHighlighting.initializeEditor(tab.id);
+                } else {
+                    setupBasicEditor(tab);
+                }
+            }
+        });
+        
+        const activeTab = getActiveTab();
+        if (activeTab) loadTabConnectionSelection(activeTab);
+        
+        isRestoringWorkspace = false;
     }
 }
 
@@ -1248,6 +1285,8 @@ async function initialize() {
         setupSidebarVisibility();
         setupEventListeners();
         initSavedQueriesEvents();
+        initScheduledTasksEvents();
+        initDashboardEvents();
         initSchemaDiffEvents();
         initGlobalExportEvents();
     } catch (err) {
@@ -1255,7 +1294,7 @@ async function initialize() {
     }
 
     try {
-        initializeQueryTabs();
+        await initializeQueryTabs();
     } catch (err) {
         console.error("initializeQueryTabs error:", err);
     }
@@ -1666,6 +1705,8 @@ function switchView(viewId) {
     currentView = viewId;
     if (window.innerWidth <= 768) sidebar.classList.add("hidden");
     if (viewId === "history-section") fetchHistory();
+    if (viewId === "scheduled-tasks-section") loadScheduledTasks();
+    if (viewId === "dashboard-section") loadDashboardMetrics();
     if (viewId === "snippets-section" && window.SnippetsManager) {
         window.SnippetsManager.loadSnippets().then(() => window.SnippetsManager.renderSnippetsPanel());
     }
@@ -1822,8 +1863,10 @@ async function renderQueryConnectionPanel() {
         item.addEventListener("click", () => {
             if (selectedConnectionIds.has(connection.id)) {
                 selectedConnectionIds.delete(connection.id);
+                scheduleWorkspaceSave();
             } else {
                 selectedConnectionIds.add(connection.id);
+                scheduleWorkspaceSave();
                 ensureSchemaMetadata(connection.id);
             }
             renderQueryConnectionPanel();
@@ -3422,6 +3465,38 @@ async function generateTableDDL(connId, tableName) {
     }
 }
 
+
+// ── Workspace State ──
+let isRestoringWorkspace = false;
+let saveWorkspaceTimeout = null;
+
+function scheduleWorkspaceSave() {
+    if (isRestoringWorkspace) return;
+    if (saveWorkspaceTimeout) clearTimeout(saveWorkspaceTimeout);
+    saveWorkspaceTimeout = setTimeout(saveWorkspaceState, 2000);
+}
+
+async function saveWorkspaceState() {
+    if (isRestoringWorkspace) return;
+    const state = {
+        activeTabId: activeTabId,
+        tabs: queryTabs.map(t => ({
+            id: t.id,
+            name: t.name,
+            query: t.query,
+            connectionIds: Array.from(t.connectionIds || [])
+        }))
+    };
+    try {
+        await apiFetch("/api/workspace", {
+            method: "PUT",
+            body: JSON.stringify({ state_json: JSON.stringify(state) })
+        });
+    } catch (e) {
+        console.warn("Failed to save workspace state", e);
+    }
+}
+
 // ── Saved Queries Management ──
 let savedQueriesList = [];
 
@@ -3714,3 +3789,352 @@ window.exportChartPng = exportChartPng;
 window.renderSchemaExplorer = renderSchemaExplorer;
 window.insertTextIntoActiveEditor = insertTextIntoActiveEditor;
 window.loadAndRunQueryInActiveTab = loadAndRunQueryInActiveTab;
+window.scheduleWorkspaceSave = scheduleWorkspaceSave;
+
+
+// ── ER Diagram Generator ──
+let erZoomLevel = 1.0;
+
+function showERDiagram() {
+    if (selectedConnectionIds.size !== 1) {
+        showToast("Select a single connection to view its ER diagram.", "info");
+        return;
+    }
+    const connId = Array.from(selectedConnectionIds)[0];
+    const schema = schemaMetadataCache.get(connId);
+    if (!schema || !schema.tables || schema.tables.length === 0) {
+        showToast("No schema data available. Please refresh or select a valid connection.", "warning");
+        return;
+    }
+
+    let mermaidCode = "erDiagram\n";
+    schema.tables.forEach(table => {
+        const tName = typeof table === "string" ? table : table.name;
+        mermaidCode += `  "${tName}" {\n`;
+        const cols = table.columns || [];
+        cols.forEach(col => {
+            const cName = typeof col === "string" ? col : col.name;
+            let cType = (typeof col === "object" && col.type ? col.type : "string").replace(/[^a-zA-Z0-9_]/g, "_");
+            if (!cType) cType = "string";
+            const pk = (typeof col === "object" && col.is_primary_key) ? " PK" : "";
+            mermaidCode += `    ${cType} ${cName}${pk}\n`;
+        });
+        mermaidCode += `  }\n`;
+
+        const fks = table.foreign_keys || [];
+        fks.forEach(fk => {
+            // relation: }o--||
+            mermaidCode += `  "${tName}" }o--|| "${fk.ref_table}" : "${fk.column} -> ${fk.ref_column}"\n`;
+        });
+    });
+
+    const container = document.getElementById("er-diagram-container");
+    container.innerHTML = `<div class="mermaid">${mermaidCode}</div>`;
+    
+    document.getElementById("er-diagram-modal").showModal();
+    
+    // Initialize mermaid if loaded
+    if (window.mermaid) {
+        try {
+            window.mermaid.initialize({ startOnLoad: false, theme: document.body.classList.contains("dark-theme") ? "dark" : "default" });
+            window.mermaid.run({ nodes: [container.querySelector('.mermaid')] });
+        } catch (e) {
+            console.warn("Mermaid rendering failed", e);
+            container.innerHTML = `<p style="color:var(--error);">Failed to render ER diagram. Schema might be too complex or contain unsupported characters.</p><pre style="font-size:10px;">${escapeHtml(mermaidCode)}</pre>`;
+        }
+    }
+    
+    erZoomLevel = 1.0;
+    container.style.transform = `scale(${erZoomLevel})`;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("btn-view-er-diagram")?.addEventListener("click", showERDiagram);
+    
+    const container = document.getElementById("er-diagram-container");
+    document.getElementById("btn-zoom-in-er")?.addEventListener("click", () => {
+        erZoomLevel += 0.2;
+        container.style.transform = `scale(${erZoomLevel})`;
+    });
+    document.getElementById("btn-zoom-out-er")?.addEventListener("click", () => {
+        erZoomLevel = Math.max(0.2, erZoomLevel - 0.2);
+        container.style.transform = `scale(${erZoomLevel})`;
+    });
+    document.getElementById("btn-reset-zoom-er")?.addEventListener("click", () => {
+        erZoomLevel = 1.0;
+        container.style.transform = `scale(${erZoomLevel})`;
+    });
+});
+
+
+// ── CSV Import ──
+function initImportCsvEvents() {
+    document.getElementById("btn-import-csv")?.addEventListener("click", () => {
+        if (selectedConnectionIds.size !== 1) {
+            showToast("Select a single connection to import data into.", "info");
+            return;
+        }
+        document.getElementById("import-csv-form").reset();
+        document.getElementById("import-csv-modal").showModal();
+    });
+
+    document.getElementById("import-csv-form")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const connId = Array.from(selectedConnectionIds)[0];
+        if (!connId) return;
+
+        const form = e.target;
+        const submitBtn = document.getElementById("btn-submit-import");
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Importing...";
+
+        try {
+            const formData = new FormData(form);
+            const response = await fetch(`/api/connections/${connId}/import`, {
+                method: "POST",
+                body: formData
+            });
+
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.detail || "Import failed");
+            }
+
+            showToast(`Successfully imported ${result.rows_inserted} rows into ${result.table}`, "success");
+            document.getElementById("import-csv-modal").close();
+            
+            // Refresh schema
+            schemaMetadataCache.delete(connId);
+            await renderSchemaExplorer(connId);
+
+        } catch (error) {
+            showToast(error.message, "error");
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Import Data";
+        }
+    });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    initImportCsvEvents();
+});
+
+
+// ── Scheduled Tasks ──
+function initScheduledTasksEvents() {
+    document.getElementById("btn-refresh-scheduled-tasks")?.addEventListener("click", loadScheduledTasks);
+    document.getElementById("btn-create-scheduled-task")?.addEventListener("click", openCreateScheduledTaskModal);
+    document.getElementById("create-scheduled-task-form")?.addEventListener("submit", handleCreateScheduledTask);
+}
+
+async function loadScheduledTasks() {
+    const tbody = document.getElementById("scheduled-tasks-tbody");
+    if (!tbody) return;
+    
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading tasks...</td></tr>';
+    try {
+        const response = await fetch("/api/scheduled-queries");
+        if (!response.ok) throw new Error("Failed to load scheduled tasks");
+        const tasks = await response.json();
+        
+        if (tasks.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No scheduled tasks found.</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = "";
+        tasks.forEach(task => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${escapeHtml(task.name)}</td>
+                <td><code style="background:var(--code-bg);padding:2px;border-radius:3px;">${escapeHtml(task.query.substring(0, 30))}${task.query.length > 30 ? '...' : ''}</code></td>
+                <td>${escapeHtml(task.cron_schedule)}</td>
+                <td>${escapeHtml(task.connection_id)}</td>
+                <td>${task.last_run_at ? new Date(task.last_run_at).toLocaleString() : 'Never'}</td>
+                <td>
+                    <span style="color: ${task.last_status === 'success' ? 'var(--success)' : (task.last_status === 'error' ? 'var(--error)' : 'inherit')}">
+                        ${task.last_status || 'Pending'}
+                    </span>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-ghost btn-run-task" data-id="${task.id}" title="Run Now">▶</button>
+                    <button class="btn btn-sm btn-ghost btn-delete-task" style="color:var(--error);" data-id="${task.id}" title="Delete">🗑</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+        
+        // Bind actions
+        tbody.querySelectorAll('.btn-run-task').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.target.closest('button').dataset.id;
+                try {
+                    await apiFetch(`/api/scheduled-queries/${id}/run`, { method: "POST" });
+                    showToast("Task run started", "success");
+                    loadScheduledTasks();
+                } catch (err) {
+                    showToast("Failed to run task: " + err.message, "error");
+                }
+            });
+        });
+        
+        tbody.querySelectorAll('.btn-delete-task').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                if (!confirm("Delete this scheduled task?")) return;
+                const id = e.target.closest('button').dataset.id;
+                try {
+                    await apiFetch(`/api/scheduled-queries/${id}`, { method: "DELETE" });
+                    showToast("Task deleted", "success");
+                    loadScheduledTasks();
+                } catch (err) {
+                    showToast("Failed to delete task: " + err.message, "error");
+                }
+            });
+        });
+        
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--error);">${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+async function openCreateScheduledTaskModal() {
+    document.getElementById("create-scheduled-task-form").reset();
+    
+    // Populate connections
+    const select = document.getElementById("st-connection-id");
+    select.innerHTML = '<option value="">Select a connection...</option>';
+    try {
+        const response = await fetch("/api/connections");
+        const connections = await response.json();
+        connections.forEach(c => {
+            const opt = document.createElement("option");
+            opt.value = c.id;
+            opt.textContent = c.name;
+            select.appendChild(opt);
+        });
+    } catch (e) {}
+    
+    // If active tab has query, pre-fill it
+    const activeTab = getActiveTab();
+    if (activeTab && activeTab.query) {
+        document.getElementById("st-query").value = activeTab.query;
+        if (activeTab.connectionIds.size === 1) {
+            document.getElementById("st-connection-id").value = Array.from(activeTab.connectionIds)[0];
+        }
+    }
+    
+    document.getElementById("create-scheduled-task-modal").showModal();
+}
+
+async function handleCreateScheduledTask(e) {
+    e.preventDefault();
+    const btn = document.getElementById("btn-save-scheduled-task");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+    
+    try {
+        const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData.entries());
+        
+        await apiFetch("/api/scheduled-queries", {
+            method: "POST",
+            body: JSON.stringify(data)
+        });
+        
+        showToast("Scheduled task created", "success");
+        document.getElementById("create-scheduled-task-modal").close();
+        loadScheduledTasks();
+    } catch (err) {
+        showToast("Failed to create task: " + err.message, "error");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Save Task";
+    }
+}
+
+
+// ── Dashboard Metrics ──
+function initDashboardEvents() {
+    document.getElementById("btn-refresh-dashboard")?.addEventListener("click", loadDashboardMetrics);
+}
+
+async function loadDashboardMetrics() {
+    const grid = document.getElementById("dashboard-metrics-grid");
+    if (!grid) return;
+    
+    grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted);">Refreshing metrics...</div>';
+    
+    try {
+        const response = await fetch("/api/saved-queries");
+        if (!response.ok) throw new Error("Failed to fetch queries");
+        const queries = await response.json();
+        
+        const metricQueries = queries.filter(q => {
+            if (!q.tags) return false;
+            try {
+                const tags = JSON.parse(q.tags);
+                return tags.includes("metric");
+            } catch(e) { return false; }
+        });
+        
+        if (metricQueries.length === 0) {
+            grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 2rem; border: 1px dashed var(--border); border-radius: 8px;">No metrics found. Save a query and add the tag "metric" to see it here.</div>';
+            return;
+        }
+        
+        grid.innerHTML = "";
+        
+        for (const mq of metricQueries) {
+            const card = document.createElement("div");
+            card.className = "metric-card";
+            card.style = "background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 0.5rem;";
+            
+            const title = document.createElement("h3");
+            title.style = "margin: 0; font-size: 1rem; color: var(--text-muted); font-weight: 500;";
+            title.textContent = mq.name;
+            
+            const value = document.createElement("div");
+            value.className = "metric-value";
+            value.style = "font-size: 2.5rem; font-weight: 700; color: var(--primary); margin: 0.5rem 0;";
+            value.textContent = "...";
+            
+            const footer = document.createElement("div");
+            footer.style = "font-size: 0.8rem; color: var(--text-muted); margin-top: auto;";
+            footer.textContent = "Loading...";
+            
+            card.appendChild(title);
+            card.appendChild(value);
+            card.appendChild(footer);
+            grid.appendChild(card);
+            
+            // Execute the query
+            try {
+                const qRes = await apiFetch("/api/execute", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        query: mq.sql,
+                        connection_id: mq.connection_id
+                    })
+                });
+                if (qRes.success && qRes.results && qRes.results.length > 0) {
+                    const row = qRes.results[0];
+                    const firstVal = Object.values(row)[0];
+                    value.textContent = firstVal !== null ? firstVal : "NULL";
+                    footer.textContent = `Updated just now`;
+                } else {
+                    value.textContent = "-";
+                    value.style.color = "var(--error)";
+                    footer.textContent = qRes.error || "No data returned";
+                }
+            } catch (err) {
+                value.textContent = "Err";
+                value.style.color = "var(--error)";
+                footer.textContent = err.message;
+            }
+        }
+        
+    } catch (e) {
+        grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: var(--error);">${escapeHtml(e.message)}</div>`;
+    }
+}
