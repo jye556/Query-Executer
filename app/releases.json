@@ -1,6 +1,20 @@
 {
-  "version": "1.2.0",
+  "version": "1.3.0",
   "releases": [
+    {
+      "version": "1.3.0",
+      "date": "2026-09-29",
+      "notes": [
+        "Saved Queries Management: Full CRUD for queries with tags, instant search, and one-click editor loading.",
+        "Schema Diff Engine: Compare database schemas between two connections to identify missing tables, missing columns, and data type mismatches.",
+        "Strict Read-Only Mode: Server-level query enforcement blocking mutating SQL (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE) with transaction read-only protection.",
+        "One-Click DDL Generation: Generate CREATE TABLE DDL directly from Schema Explorer for any table.",
+        "Multi-Format Export: Export query results to CSV, JSON, Markdown tables, and SQL INSERT statements.",
+        "Interactive Column Sorting: Sort tabular query results ascending/descending with visual sort direction indicators.",
+        "Summary Statistics Footer: Automatic calculation of Sum (\u03a3), Average (\u03bc), Min (\u2193), and Max (\u2191) on numeric result columns.",
+        "Workspace State & Scheduled Queries: Backend support for persistent workspace tabs and automated query scheduling with webhook dispatch."
+      ]
+    },
     {
       "version": "1.2.0",
       "date": "2026-09-29",

@@ -8,9 +8,10 @@ const template = fs.readFileSync(path.join(root, "app/templates/index.html"), "u
 const script = fs.readFileSync(path.join(root, "app/static/js/app.js"), "utf8");
 const css = fs.readFileSync(path.join(root, "app/static/css/style.css"), "utf8");
 const login = fs.readFileSync(path.join(root, "app/templates/login.html"), "utf8");
+const releases = JSON.parse(fs.readFileSync(path.join(root, "app/releases.json"), "utf8"));
 
-assert.match(template, /id="app-version-pill"[^>]*>v1\.1\.1<\/span>/);
-assert.match(login, /style\.css\?v=v1\.1\.1/);
+assert.match(template, new RegExp(`id="app-version-pill"[^>]*>v${releases.version}<\\/span>`));
+assert.match(login, new RegExp(`style\\.css\\?v=(?:v)?${releases.version}`));
 const controls = template.match(/<div class="header-controls">([\s\S]*?)<\/div>\s*<\/header>/)?.[1];
 assert.ok(controls);
 assert.doesNotMatch(controls, /status-indicator|Server Active|connection-status-text/);

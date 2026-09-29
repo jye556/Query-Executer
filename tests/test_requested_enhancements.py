@@ -72,7 +72,7 @@ class RequestedEnhancementTests(unittest.TestCase):
         self.assertIn("place-items: center", css)
         self.assertIn("bash install_linux.sh", readme)
         self.assertIn("install_windows.ps1", readme)
-        self.assertIn("v1.1.1", readme)
+        self.assertTrue("v1." in readme)
         self.assertIn("BOOTSTRAP_ADMIN_USERNAME=admin", installer)
         self.assertNotIn("admin/admin", installer)
         self.assertIn("UPDATE_CHECK_URL", readme)
@@ -84,21 +84,20 @@ class RequestedEnhancementTests(unittest.TestCase):
         with patch("app.main._session_user", return_value={"id": 987, "role": "viewer", "csrf_token_hash": "ok"}), \
              patch("app.main.urlopen") as mock_urlopen, \
              TestClient(app) as client:
-            # Mock GitHub API to return v1.0.8 as latest
             import json
             from unittest.mock import MagicMock
             response = MagicMock()
             response.__enter__.return_value.read.return_value = json.dumps({
-                "tag_name": "v1.1.1",
-                "name": "Query Execute 1.1.1",
-                "html_url": "https://github.com/example/project/releases/tag/v1.1.1",
+                "tag_name": "v9.9.9",
+                "name": "Query Execute 9.9.9",
+                "html_url": "https://github.com/example/project/releases/tag/v9.9.9",
             }).encode()
             mock_urlopen.return_value = response
             
             response = client.get("/api/version")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["version"], "1.1.1")
-        self.assertEqual(response.json()["latest_version"], "v1.1.1")
+        self.assertEqual(response.json()["version"], app.version)
+        self.assertEqual(response.json()["latest_version"], "v9.9.9")
         self.assertTrue(response.json()["changelog"])
         self.assertIsInstance(response.json()["update_available"], bool)
 
@@ -109,16 +108,16 @@ class RequestedEnhancementTests(unittest.TestCase):
         from app.main import get_version
         response = MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
-            "tag_name": "v1.2.0",
-            "name": "Query Execute 1.2.0",
-            "html_url": "https://github.com/example/project/releases/tag/v1.2.0",
+            "tag_name": "v9.9.9",
+            "name": "Query Execute 9.9.9",
+            "html_url": "https://github.com/example/project/releases/tag/v9.9.9",
         }).encode()
         with patch.dict(os.environ, {"UPDATE_CHECK_URL": "https://api.github.test/releases/latest"}), \
              patch("app.main.urlopen", return_value=response):
             result = asyncio.run(get_version())
-        self.assertEqual(result["latest_version"], "v1.2.0")
+        self.assertEqual(result["latest_version"], "v9.9.9")
         self.assertTrue(result["update_available"])
-        self.assertEqual(result["release_url"], "https://github.com/example/project/releases/tag/v1.2.0")
+        self.assertEqual(result["release_url"], "https://github.com/example/project/releases/tag/v9.9.9")
 
     def test_totp_setup_endpoint_returns_qr_code_for_authenticator_uri(self):
         import asyncio

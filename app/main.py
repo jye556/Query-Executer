@@ -60,7 +60,7 @@ from app.auth import (
     totp_provisioning_uri,
     verify_totp,
 )
-from app.db_service import DatabaseType, apply_query_edits, cancel_query, execute_query, get_schema_metadata, get_supported_databases, test_connection, validate_query
+from app.db_service import DatabaseType, apply_query_edits, cancel_query, execute_query, generate_table_ddl, get_schema_diff, get_schema_metadata, get_supported_databases, test_connection, validate_query
 from app.migrations import normalize_json, run_migrations
 
 
@@ -85,7 +85,7 @@ USE_POSTGRES = bool(DATABASE_URL)
 app = FastAPI(
     title="Query Execute",
     description="A secure, multi-database SQL query workspace.",
-    version="1.2.0",
+    version="1.3.0",
 )
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -2294,3 +2294,409 @@ async def delete_snippet(snippet_id: str, user: Dict[str, Any] = Depends(current
         return {"success": True}
     finally:
         conn.close()
+
+
+# ==============================================================================
+# v1.3.0 Enhancements: Saved Queries, Workspace, Scheduled Queries, DDL, Schema Diff
+# ==============================================================================
+
+class SavedQueryInput(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    sql: str = Field(..., min_length=1)
+    category: Optional[str] = Field("General", max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    connection_id: Optional[str] = Field(None, max_length=50)
+    tags: Optional[str] = Field(None, max_length=250)
+
+
+class SavedQueryResponse(BaseModel):
+    id: str
+    name: str
+    sql: str
+    category: Optional[str]
+    description: Optional[str]
+    connection_id: Optional[str]
+    tags: Optional[str]
+    user_id: int
+    created_at: str
+    updated_at: str
+
+
+def _saved_query_response(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "sql": row["sql"],
+        "category": row.get("category") or "General",
+        "description": row.get("description"),
+        "connection_id": row.get("connection_id"),
+        "tags": row.get("tags"),
+        "user_id": row["user_id"],
+        "created_at": _iso_datetime(row.get("created_at")),
+        "updated_at": _iso_datetime(row.get("updated_at")),
+    }
+
+
+@app.get("/api/saved-queries", response_model=List[SavedQueryResponse])
+async def list_saved_queries(user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        if user["role"] == "admin":
+            cur.execute("SELECT * FROM saved_queries ORDER BY category, name")
+        else:
+            cur.execute(
+                "SELECT * FROM saved_queries WHERE user_id = %s ORDER BY category, name" if USE_POSTGRES else
+                "SELECT * FROM saved_queries WHERE user_id = ? ORDER BY category, name",
+                (user["id"],)
+            )
+        rows = _rows(cur)
+        cur.close()
+        return [_saved_query_response(row) for row in rows]
+    finally:
+        conn.close()
+
+
+@app.post("/api/saved-queries", response_model=SavedQueryResponse)
+async def create_saved_query(payload: SavedQueryInput, user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        query_id = str(uuid.uuid4())
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO saved_queries (id, name, category, description, sql, connection_id, tags, user_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""" if USE_POSTGRES else
+            """INSERT INTO saved_queries (id, name, category, description, sql, connection_id, tags, user_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (query_id, payload.name, payload.category or "General", payload.description, payload.sql, payload.connection_id, payload.tags, user["id"])
+        )
+        conn.commit()
+        cur.close()
+
+        cur = _cursor(conn, dict_rows=True)
+        cur.execute("SELECT * FROM saved_queries WHERE id = %s" if USE_POSTGRES else "SELECT * FROM saved_queries WHERE id = ?", (query_id,))
+        row = _one(cur.fetchone())
+        cur.close()
+        return _saved_query_response(row)
+    finally:
+        conn.close()
+
+
+@app.put("/api/saved-queries/{query_id}", response_model=SavedQueryResponse)
+async def update_saved_query(query_id: str, payload: SavedQueryInput, user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        cur.execute("SELECT * FROM saved_queries WHERE id = %s" if USE_POSTGRES else "SELECT * FROM saved_queries WHERE id = ?", (query_id,))
+        row = _one(cur.fetchone())
+        cur.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Saved query not found")
+        if row["user_id"] != user["id"] and user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Not authorized to edit this saved query")
+
+        cur = conn.cursor()
+        cur.execute(
+            """UPDATE saved_queries
+               SET name = %s, category = %s, description = %s, sql = %s, connection_id = %s, tags = %s, updated_at = CURRENT_TIMESTAMP
+               WHERE id = %s""" if USE_POSTGRES else
+            """UPDATE saved_queries
+               SET name = ?, category = ?, description = ?, sql = ?, connection_id = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (payload.name, payload.category or "General", payload.description, payload.sql, payload.connection_id, payload.tags, query_id)
+        )
+        conn.commit()
+        cur.close()
+
+        cur = _cursor(conn, dict_rows=True)
+        cur.execute("SELECT * FROM saved_queries WHERE id = %s" if USE_POSTGRES else "SELECT * FROM saved_queries WHERE id = ?", (query_id,))
+        row = _one(cur.fetchone())
+        cur.close()
+        return _saved_query_response(row)
+    finally:
+        conn.close()
+
+
+@app.delete("/api/saved-queries/{query_id}")
+async def delete_saved_query(query_id: str, user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        cur.execute("SELECT * FROM saved_queries WHERE id = %s" if USE_POSTGRES else "SELECT * FROM saved_queries WHERE id = ?", (query_id,))
+        row = _one(cur.fetchone())
+        cur.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Saved query not found")
+        if row["user_id"] != user["id"] and user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Not authorized to delete this saved query")
+
+        cur = conn.cursor()
+        cur.execute("DELETE FROM saved_queries WHERE id = %s" if USE_POSTGRES else "DELETE FROM saved_queries WHERE id = ?", (query_id,))
+        conn.commit()
+        cur.close()
+        return {"success": True}
+    finally:
+        conn.close()
+
+
+class WorkspaceStateInput(BaseModel):
+    state_json: str
+
+
+@app.get("/api/workspace")
+async def get_workspace_state(user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        cur.execute(
+            "SELECT state_json, updated_at FROM workspace_state WHERE user_id = %s" if USE_POSTGRES else
+            "SELECT state_json, updated_at FROM workspace_state WHERE user_id = ?",
+            (user["id"],)
+        )
+        row = _one(cur.fetchone())
+        cur.close()
+        if not row:
+            return {"state_json": "{}", "updated_at": None}
+        return {"state_json": row["state_json"], "updated_at": _iso_datetime(row.get("updated_at"))}
+    finally:
+        conn.close()
+
+
+@app.put("/api/workspace")
+async def save_workspace_state(payload: WorkspaceStateInput, user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        cur = conn.cursor()
+        if USE_POSTGRES:
+            cur.execute(
+                """INSERT INTO workspace_state (user_id, state_json, updated_at)
+                   VALUES (%s, %s, CURRENT_TIMESTAMP)
+                   ON CONFLICT (user_id) DO UPDATE SET state_json = EXCLUDED.state_json, updated_at = CURRENT_TIMESTAMP""",
+                (user["id"], payload.state_json)
+            )
+        else:
+            cur.execute(
+                """INSERT INTO workspace_state (user_id, state_json, updated_at)
+                   VALUES (?, ?, CURRENT_TIMESTAMP)
+                   ON CONFLICT (user_id) DO UPDATE SET state_json = excluded.state_json, updated_at = CURRENT_TIMESTAMP""",
+                (user["id"], payload.state_json)
+            )
+        conn.commit()
+        cur.close()
+        return {"success": True}
+    finally:
+        conn.close()
+
+
+class ScheduledQueryInput(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    query: str = Field(..., min_length=1)
+    connection_id: str = Field(..., min_length=1, max_length=50)
+    cron_interval: str = Field("daily", max_length=50)
+    webhook_url: Optional[str] = Field(None, max_length=500)
+    alert_condition: Optional[str] = Field("always", max_length=100)
+    is_active: bool = True
+
+
+@app.get("/api/scheduled-queries")
+async def list_scheduled_queries(user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        if user["role"] == "admin":
+            cur.execute("SELECT * FROM scheduled_queries ORDER BY created_at DESC")
+        else:
+            cur.execute(
+                "SELECT * FROM scheduled_queries WHERE user_id = %s ORDER BY created_at DESC" if USE_POSTGRES else
+                "SELECT * FROM scheduled_queries WHERE user_id = ? ORDER BY created_at DESC",
+                (user["id"],)
+            )
+        rows = _rows(cur)
+        cur.close()
+        return [
+            {
+                "id": r["id"],
+                "title": r["title"],
+                "query": r["query"],
+                "connection_id": r["connection_id"],
+                "cron_interval": r.get("cron_interval") or "daily",
+                "webhook_url": r.get("webhook_url"),
+                "alert_condition": r.get("alert_condition") or "always",
+                "is_active": bool(r.get("is_active")),
+                "last_run_at": _iso_datetime(r.get("last_run_at")),
+                "last_status": r.get("last_status"),
+                "created_at": _iso_datetime(r.get("created_at")),
+                "updated_at": _iso_datetime(r.get("updated_at")),
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+@app.post("/api/scheduled-queries")
+async def create_scheduled_query(payload: ScheduledQueryInput, user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        sched_id = str(uuid.uuid4())
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO scheduled_queries (id, title, query, connection_id, cron_interval, webhook_url, alert_condition, is_active, user_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""" if USE_POSTGRES else
+            """INSERT INTO scheduled_queries (id, title, query, connection_id, cron_interval, webhook_url, alert_condition, is_active, user_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (sched_id, payload.title, payload.query, payload.connection_id, payload.cron_interval, payload.webhook_url, payload.alert_condition, payload.is_active, user["id"])
+        )
+        conn.commit()
+        cur.close()
+        return {"id": sched_id, "success": True}
+    finally:
+        conn.close()
+
+
+@app.delete("/api/scheduled-queries/{query_id}")
+async def delete_scheduled_query(query_id: str, user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        cur.execute("SELECT * FROM scheduled_queries WHERE id = %s" if USE_POSTGRES else "SELECT * FROM scheduled_queries WHERE id = ?", (query_id,))
+        row = _one(cur.fetchone())
+        cur.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Scheduled query not found")
+        if row["user_id"] != user["id"] and user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Not authorized to delete this scheduled query")
+
+        cur = conn.cursor()
+        cur.execute("DELETE FROM scheduled_queries WHERE id = %s" if USE_POSTGRES else "DELETE FROM scheduled_queries WHERE id = ?", (query_id,))
+        conn.commit()
+        cur.close()
+        return {"success": True}
+    finally:
+        conn.close()
+
+
+@app.post("/api/scheduled-queries/{query_id}/run")
+async def run_scheduled_query_now(query_id: str, user: Dict[str, Any] = Depends(current_user)):
+    """Manually trigger or test run a scheduled query and its webhook."""
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        cur.execute("SELECT * FROM scheduled_queries WHERE id = %s" if USE_POSTGRES else "SELECT * FROM scheduled_queries WHERE id = ?", (query_id,))
+        sched = _one(cur.fetchone())
+        cur.close()
+        if not sched:
+            raise HTTPException(status_code=404, detail="Scheduled query not found")
+        
+        row = _authorized_connection_row(conn, sched["connection_id"], user)
+        if not row:
+            raise HTTPException(status_code=404, detail="Connection not found or unauthorized")
+        conn_params = _connection_params(row)
+        conn_params["db_type"] = row.get("db_type")
+    finally:
+        conn.close()
+
+    result = execute_query(query=sched["query"], limit=100, **conn_params)
+    status_str = "Success" if result.get("success") else f"Failed: {result.get('error', 'Unknown error')}"
+
+    webhook_sent = False
+    webhook_error = None
+    if sched.get("webhook_url"):
+        should_send = True
+        condition = sched.get("alert_condition") or "always"
+        if condition == "row_count > 0" and result.get("count", 0) <= 0:
+            should_send = False
+        elif condition == "error" and result.get("success"):
+            should_send = False
+
+        if should_send:
+            try:
+                import urllib.request
+                payload = json.dumps({
+                    "title": sched["title"],
+                    "query": sched["query"],
+                    "connection": row.get("name"),
+                    "row_count": result.get("count", 0),
+                    "success": result.get("success", False),
+                    "execution_time_ms": result.get("execution_time_ms", 0),
+                    "executed_at": datetime.now(timezone.utc).isoformat(),
+                }).encode("utf-8")
+                req = urllib.request.Request(
+                    sched["webhook_url"],
+                    data=payload,
+                    headers={"Content-Type": "application/json", "User-Agent": "Query-Execute-Alert/1.3"}
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    webhook_sent = resp.status < 300
+            except Exception as e:
+                webhook_error = str(e)
+
+    conn = get_db_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """UPDATE scheduled_queries SET last_run_at = CURRENT_TIMESTAMP, last_status = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s""" if USE_POSTGRES else
+            """UPDATE scheduled_queries SET last_run_at = CURRENT_TIMESTAMP, last_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
+            (status_str[:50], query_id)
+        )
+        conn.commit()
+        cur.close()
+    finally:
+        conn.close()
+
+    return {
+        "success": result.get("success", False),
+        "count": result.get("count", 0),
+        "status": status_str,
+        "webhook_sent": webhook_sent,
+        "webhook_error": webhook_error,
+    }
+
+
+@app.get("/api/connections/{connection_id}/tables/{table_name}/ddl")
+async def get_table_ddl_endpoint(connection_id: str, table_name: str, user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        row = _authorized_connection_row(conn, connection_id, user)
+        if not row:
+            raise HTTPException(status_code=404, detail="Connection not found or not authorized")
+        params = _connection_params(row)
+        params["db_type"] = row.get("db_type")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail="Saved connection credentials need to be updated") from exc
+    finally:
+        conn.close()
+
+    result = generate_table_ddl(table_name, **params)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Could not generate DDL"))
+    return result
+
+
+class SchemaDiffRequest(BaseModel):
+    connection_a: str
+    connection_b: str
+
+
+@app.post("/api/schema/diff")
+async def get_schema_diff_endpoint(payload: SchemaDiffRequest, user: Dict[str, Any] = Depends(current_user)):
+    conn = get_db_conn()
+    try:
+        row_a = _authorized_connection_row(conn, payload.connection_a, user)
+        row_b = _authorized_connection_row(conn, payload.connection_b, user)
+        if not row_a or not row_b:
+            raise HTTPException(status_code=404, detail="One or both connections not found or not authorized")
+        params_a = _connection_params(row_a)
+        params_a["db_type"] = row_a.get("db_type")
+        params_b = _connection_params(row_b)
+        params_b["db_type"] = row_b.get("db_type")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail="Saved connection credentials need to be updated") from exc
+    finally:
+        conn.close()
+
+    result = get_schema_diff(params_a, params_b)
+    result["connection_a_name"] = row_a.get("name")
+    result["connection_b_name"] = row_b.get("name")
+    return result
+
