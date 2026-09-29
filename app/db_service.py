@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import threading
 import time
 from datetime import date, datetime
 from decimal import Decimal
@@ -62,6 +63,54 @@ class DatabaseType(str, Enum):
 
 def _db_name(db_type: Any) -> str:
     return str(getattr(db_type, "value", db_type)).lower()
+
+
+# ---------------------------------------------------------------------------
+# Query Execution Tracking and Cancellation
+# ---------------------------------------------------------------------------
+
+_ACTIVE_EXECUTIONS: Dict[str, Dict[str, Any]] = {}
+_ACTIVE_EXECUTIONS_LOCK = threading.Lock()
+
+
+def register_execution(execution_id: str, conn: Any, db_type: str) -> None:
+    if not execution_id:
+        return
+    with _ACTIVE_EXECUTIONS_LOCK:
+        _ACTIVE_EXECUTIONS[execution_id] = {
+            "conn": conn,
+            "db_type": db_type,
+            "started_at": time.time(),
+        }
+
+
+def unregister_execution(execution_id: Optional[str]) -> None:
+    if not execution_id:
+        return
+    with _ACTIVE_EXECUTIONS_LOCK:
+        _ACTIVE_EXECUTIONS.pop(execution_id, None)
+
+
+def cancel_query(execution_id: str) -> Dict[str, Any]:
+    with _ACTIVE_EXECUTIONS_LOCK:
+        info = _ACTIVE_EXECUTIONS.get(execution_id)
+    if not info:
+        return {"success": False, "error": "Query execution not found or already completed"}
+    conn = info.get("conn")
+    db_type = info.get("db_type")
+    try:
+        if db_type == DatabaseType.POSTGRESQL.value and hasattr(conn, "cancel"):
+            conn.cancel()
+        elif db_type == DatabaseType.SQLITE.value and hasattr(conn, "interrupt"):
+            conn.interrupt()
+        elif db_type == DatabaseType.MYSQL.value and hasattr(conn, "close"):
+            conn.close()
+        elif hasattr(conn, "close"):
+            conn.close()
+        return {"success": True, "message": "Query cancelled successfully"}
+    except Exception as exc:
+        return {"success": False, "error": f"Failed to cancel query: {str(exc)}"}
+
 
 
 # ---------------------------------------------------------------------------
@@ -1190,6 +1239,7 @@ def execute_query(
     extra_params: Optional[Dict[str, Any]] = None,
     role: str = "viewer",
     parameters: Optional[Dict[str, Any]] = None,
+    execution_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     # Validate query first (without parameters)
     ok, validation_error, query_text, _ = validate_query(query, role, db_type, {"host": host, "port": port, "database": database, "username": username, "password": password, "extra_params": extra_params or {}})
@@ -1223,6 +1273,8 @@ def execute_query(
     name = _db_name(db_type)
     try:
         conn = _get_connection(name, params)
+        if execution_id:
+            register_execution(execution_id, conn, name)
         cursor = conn.cursor()
         if name == DatabaseType.POSTGRESQL.value:
             # Applies to the current transaction only and prevents runaway
@@ -1293,6 +1345,8 @@ def execute_query(
             "columns": [],
         }
     finally:
+        if execution_id:
+            unregister_execution(execution_id)
         if cursor:
             try:
                 cursor.close()

@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=v1.1.1">
+    <link rel="stylesheet" href="/static/css/style.css?v=v1.2.0">
 
     <!-- CodeMirror 6 Styles (loaded via JS modules) -->
     <style>
@@ -29,12 +29,12 @@
         .editor-container { min-height: 200px; }
     </style>
 
-    <script defer src="/static/js/app.js?v=v1.1.1"></script>
-    <script defer src="/static/js/editor-highlighting.js?v=v1.1.1"></script>
-    <script defer src="/static/js/sql-formatter.js?v=v1.1.1"></script>
-    <script defer src="/static/js/snippets.js?v=v1.1.1"></script>
-    <script defer src="/static/js/inline-editing.js?v=v1.1.1"></script>
-    <script defer src="/static/js/autocomplete.js?v=v1.1.1"></script>
+    <script defer src="/static/js/app.js?v=v1.2.0"></script>
+    <script defer src="/static/js/editor-highlighting.js?v=v1.2.0"></script>
+    <script defer src="/static/js/sql-formatter.js?v=v1.2.0"></script>
+    <script defer src="/static/js/snippets.js?v=v1.2.0"></script>
+    <script defer src="/static/js/inline-editing.js?v=v1.2.0"></script>
+    <script defer src="/static/js/autocomplete.js?v=v1.2.0"></script>
 </head>
 <body class="dark-theme">
     <div class="app-container">
@@ -65,7 +65,7 @@
                 </div>
                 <div class="logo-text">
                     <h1>Query Execute</h1>
-                    <span class="app-version-pill" id="app-version-pill">v1.1.1</span>
+                    <span class="app-version-pill" id="app-version-pill">v1.2.0</span>
                 </div>
             </div>
             <div class="header-controls">
@@ -152,6 +152,26 @@
                                     <!-- Populated dynamically -->
                                 </div>
                             </div>
+                            <div class="panel-section schema-explorer-panel" id="schema-explorer-section">
+                                <div class="panel-header">
+                                    <div class="schema-header-title">
+                                        <h3>Schema Explorer</h3>
+                                        <span class="schema-conn-badge" id="schema-current-conn">No connection</span>
+                                    </div>
+                                    <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-schema" title="Refresh Schema" aria-label="Refresh Schema">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                    </button>
+                                </div>
+                                <div class="schema-search-row">
+                                    <input type="search" id="schema-table-search" class="connection-search-input" placeholder="Search tables and columns..." autocomplete="off">
+                                </div>
+                                <div class="schema-explorer-body" id="schema-explorer-body">
+                                    <div class="schema-empty-state" id="schema-empty-state">
+                                        <p>Select a connection to explore tables, columns, and foreign keys.</p>
+                                    </div>
+                                    <ul class="schema-tree-list" id="schema-tree-list"></ul>
+                                </div>
+                            </div>
                             <div class="panel-section">
                                 <div class="panel-header">
                                     <h3>Settings</h3>
@@ -196,7 +216,7 @@
                         </section>
                         <section class="settings-tab-panel hidden" id="updates-settings">
                             <h3>Application updates</h3>
-                            <p>Installed version: <strong id="current-app-version">v1.1.1</strong></p>
+                            <p>Installed version: <strong id="current-app-version">v1.2.0</strong></p>
                             <p id="update-status" role="status">Checking for updates…</p>
                             <div class="update-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
                                 <a id="btn-apply-update" class="btn btn-accent hidden" href="#" target="_blank" rel="noopener noreferrer">Open release page</a>
@@ -343,6 +363,12 @@
                                     <div class="form-group full-width">
                                         <label for="conn-extra-params">Extra Parameters (JSON)</label>
                                         <textarea id="conn-extra-params" class="code-editor-small" placeholder='{"sslmode": "require", "charset": "utf8mb4"}'></textarea>
+                                    </div>
+                                    <div class="form-group full-width">
+                                        <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                            <input type="checkbox" id="conn-safe-mode">
+                                            <span><strong>Safe Mode</strong>: Require confirmation before executing destructive queries (DROP, DELETE, TRUNCATE, ALTER)</span>
+                                        </label>
                                     </div>
                                 </div>
                                 <div class="form-actions">
