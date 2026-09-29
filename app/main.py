@@ -6,6 +6,8 @@ connection/history operation is scoped to the authenticated user.
 """
 
 from __future__ import annotations
+import csv
+import io
 
 import base64
 import json
@@ -22,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 from typing import Any, Dict, Iterable, List, Optional, Union
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import File, UploadFile, Form, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -85,7 +87,7 @@ USE_POSTGRES = bool(DATABASE_URL)
 app = FastAPI(
     title="Query Execute",
     description="A secure, multi-database SQL query workspace.",
-    version="1.3.0",
+    version="1.4.0",
 )
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -2700,3 +2702,100 @@ async def get_schema_diff_endpoint(payload: SchemaDiffRequest, user: Dict[str, A
     result["connection_b_name"] = row_b.get("name")
     return result
 
+
+
+@app.post("/api/connections/{connection_id}/import")
+async def import_csv_to_table(
+    connection_id: str,
+    request: Request,
+    user: Dict[str, Any] = Depends(current_user)
+):
+    form = await request.form()
+    table_name = form.get("table_name", "")
+    if_exists = form.get("if_exists", "fail")
+    file = form.get("file")
+    conn = get_db_conn()
+    try:
+        row = _authorized_connection_row(conn, connection_id, user)
+        if not row:
+            raise HTTPException(status_code=404, detail="Connection not found or not authorized")
+        
+        # Check strict read-only
+        extra = json.loads(row["extra_params"]) if row["extra_params"] else {}
+        if extra.get("strict_read_only"):
+            raise HTTPException(status_code=403, detail="Cannot import data: Connection is in Strict Read-Only mode.")
+
+        # Read CSV
+        content = await file.read()
+        text = content.decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(text))
+        if not reader.fieldnames:
+            raise HTTPException(status_code=400, detail="CSV file has no headers")
+
+        columns = reader.fieldnames
+        rows = list(reader)
+
+        # Detect types (simple)
+        col_types = {}
+        for col in columns:
+            is_int, is_float = True, True
+            for r in rows:
+                val = r.get(col, "").strip()
+                if not val:
+                    continue
+                if is_int and not val.isdigit() and not (val.startswith("-") and val[1:].isdigit()):
+                    is_int = False
+                try:
+                    float(val)
+                except ValueError:
+                    is_float = False
+            if is_int:
+                col_types[col] = "INTEGER" if row["db_type"] != DatabaseType.ORACLE.value else "NUMBER"
+            elif is_float:
+                col_types[col] = "REAL" if row["db_type"] == DatabaseType.SQLITE.value else "DOUBLE PRECISION"
+            else:
+                col_types[col] = "TEXT" if row["db_type"] in [DatabaseType.SQLITE.value, DatabaseType.POSTGRESQL.value] else "VARCHAR(255)"
+
+        target_conn = _get_connection(row["db_type"], row)
+        target_cur = target_conn.cursor()
+
+        try:
+            # Handle if_exists
+            if if_exists == "replace":
+                target_cur.execute(f"DROP TABLE IF EXISTS {table_name}")
+            
+            # Create table if not exists
+            cols_def = ", ".join([f'"{col}" {col_types[col]}' for col in columns])
+            create_stmt = f'CREATE TABLE IF NOT EXISTS {table_name} ({cols_def})'
+            try:
+                target_cur.execute(create_stmt)
+            except Exception as e:
+                # Might exist and if_exists == 'fail' or 'append'
+                pass
+
+            # Insert data
+            placeholders = ", ".join(["%s" if row["db_type"] == DatabaseType.POSTGRESQL.value else "?" for _ in columns])
+            insert_stmt = f'INSERT INTO {table_name} ({", ".join(f"{c}" for c in columns)}) VALUES ({placeholders})'
+            
+            # Batch insert
+            batch_data = []
+            for r in rows:
+                batch_data.append(tuple(r.get(c) for c in columns))
+            
+            if row["db_type"] == DatabaseType.POSTGRESQL.value:
+                from psycopg2.extras import execute_batch
+                execute_batch(target_cur, insert_stmt, batch_data)
+            else:
+                target_cur.executemany(insert_stmt, batch_data)
+
+            target_conn.commit()
+            return {"success": True, "rows_inserted": len(batch_data), "table": table_name}
+        except Exception as e:
+            target_conn.rollback()
+            raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+        finally:
+            target_cur.close()
+            target_conn.close()
+
+    finally:
+        conn.close()

@@ -103,6 +103,7 @@ async function createEditor(tabId, container, initialQuery = "", options = {}) {
                         updateEditorTabName(tab);
                         // Debounce syntax check
                         debounceQueryCheck(tab);
+                        if (window.scheduleWorkspaceSave) window.scheduleWorkspaceSave();
                     }
                 }
             }),
