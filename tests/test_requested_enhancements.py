@@ -273,6 +273,56 @@ class RequestedEnhancementTests(unittest.TestCase):
         finally:
             os.unlink(database)
 
+    def test_cancel_query_handles_nonexistent_and_registered(self):
+        from app.db_service import cancel_query, register_execution, unregister_execution
+        res = cancel_query("nonexistent-exec-id")
+        self.assertFalse(res["success"])
+        self.assertIn("not found", res["error"])
+
+        class MockConn:
+            def __init__(self):
+                self.cancelled = False
+            def cancel(self):
+                self.cancelled = True
+
+        mock_conn = MockConn()
+        register_execution("test-exec-1", mock_conn, "postgresql")
+        cancel_res = cancel_query("test-exec-1")
+        self.assertTrue(cancel_res["success"])
+        self.assertTrue(mock_conn.cancelled)
+        unregister_execution("test-exec-1")
+
+    def test_cancel_query_endpoint(self):
+        with patch("app.main._session_user", return_value={"id": 1, "username": "admin", "role": "admin"}), \
+             patch("app.main._csrf_valid", return_value=True):
+            with TestClient(app) as client:
+                client.cookies.set("csrf_token", "ok")
+                response = client.post("/api/query/cancel", json={"execution_id": "nonexistent-123"}, headers={"X-CSRF-Token": "ok"})
+                self.assertEqual(response.status_code, 200)
+                data = response.json()
+                self.assertFalse(data["success"])
+                self.assertIn("not found", data["error"])
+
+    def test_schema_explorer_elements_present_in_template(self):
+        from pathlib import Path
+        template = (Path(__file__).parents[1] / "app/templates/index.html").read_text()
+        self.assertIn('id="schema-explorer-section"', template)
+        self.assertIn('id="schema-current-conn"', template)
+        self.assertIn('id="btn-refresh-schema"', template)
+        self.assertIn('id="schema-table-search"', template)
+        self.assertIn('id="schema-tree-list"', template)
+        self.assertIn('id="conn-safe-mode"', template)
+
+    def test_safe_mode_in_connection_payload(self):
+        payload = ConnectionInput(
+            name="safe-prod",
+            db_type="sqlite",
+            database=":memory:",
+            extra_params={"safe_mode": True}
+        )
+        self.assertTrue(payload.extra_params["safe_mode"])
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -203,6 +203,10 @@ function renderTabPanelContent(tab) {
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                         <span class="btn-text">Parameters</span>
                     </button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-explain-query-${tab.id}" title="Explain query execution plan" aria-label="Explain query execution plan">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        <span>Explain</span>
+                    </button>
                     <button type="button" class="btn btn-accent btn-large" id="btn-execute-query-${tab.id}" data-tab-id="${tab.id}">
                         <svg class="icon-play" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                         <span id="btn-execute-text-${tab.id}">Execute</span>
@@ -252,6 +256,19 @@ function renderTabPanelContent(tab) {
                     <h2>Query Results</h2>
                 </div>
                 <div class="results-meta">
+                    <div class="results-quick-search-wrap">
+                        <input type="search" class="results-quick-filter" id="result-search-${tab.id}" placeholder="Filter in results..." autocomplete="off">
+                    </div>
+                    <div class="results-view-mode-toggle" role="group" aria-label="View Mode">
+                        <button type="button" class="btn btn-ghost btn-sm active" id="btn-view-grid-${tab.id}" title="Grid Table View">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+                            Table
+                        </button>
+                        <button type="button" class="btn btn-ghost btn-sm" id="btn-view-chart-${tab.id}" title="Chart Visualization">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                            Chart
+                        </button>
+                    </div>
                     <span class="result-count" id="result-count-${tab.id}">0 rows</span>
                     <span class="execution-time" id="execution-time-${tab.id}">0 ms</span>
                     <div id="result-edit-actions-${tab.id}" class="result-edit-actions hidden">
@@ -275,6 +292,35 @@ function renderTabPanelContent(tab) {
                 </div>
 
                 <div id="single-result-container-${tab.id}" class="table-scroll-container hidden"></div>
+
+                <div id="results-chart-container-${tab.id}" class="results-chart-panel hidden">
+                    <div class="chart-controls-bar">
+                        <div class="chart-control-item">
+                            <label for="chart-type-${tab.id}">Type</label>
+                            <select id="chart-type-${tab.id}" class="connection-group-filter">
+                                <option value="bar">Bar Chart</option>
+                                <option value="line">Line Chart</option>
+                                <option value="pie">Pie Chart</option>
+                                <option value="doughnut">Doughnut Chart</option>
+                            </select>
+                        </div>
+                        <div class="chart-control-item">
+                            <label for="chart-x-col-${tab.id}">X Axis (Category)</label>
+                            <select id="chart-x-col-${tab.id}" class="connection-group-filter"></select>
+                        </div>
+                        <div class="chart-control-item">
+                            <label for="chart-y-col-${tab.id}">Y Axis (Metric)</label>
+                            <select id="chart-y-col-${tab.id}" class="connection-group-filter"></select>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-export-chart-${tab.id}" title="Download Chart Image">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export PNG
+                        </button>
+                    </div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="chart-canvas-${tab.id}" width="900" height="380"></canvas>
+                    </div>
+                </div>
 
                 <div id="multi-results-container-${tab.id}" class="hidden">
                     <!-- Each selected connection gets its own result section -->
@@ -317,6 +363,16 @@ function ensureTabElementReferences(tab) {
     tab.parametersList = document.getElementById(`parameters-list-${tab.id}`);
     tab.btnToggleParameters = document.getElementById(`btn-toggle-parameters-${tab.id}`);
     tab.btnRefreshParameters = document.getElementById(`btn-refresh-parameters-${tab.id}`);
+    tab.btnExplain = document.getElementById(`btn-explain-query-${tab.id}`);
+    tab.resultSearchInput = document.getElementById(`result-search-${tab.id}`);
+    tab.btnViewGrid = document.getElementById(`btn-view-grid-${tab.id}`);
+    tab.btnViewChart = document.getElementById(`btn-view-chart-${tab.id}`);
+    tab.chartContainer = document.getElementById(`results-chart-container-${tab.id}`);
+    tab.chartCanvas = document.getElementById(`chart-canvas-${tab.id}`);
+    tab.chartTypeSelect = document.getElementById(`chart-type-${tab.id}`);
+    tab.chartXSelect = document.getElementById(`chart-x-col-${tab.id}`);
+    tab.chartYSelect = document.getElementById(`chart-y-col-${tab.id}`);
+    tab.btnExportChart = document.getElementById(`btn-export-chart-${tab.id}`);
 }
 
 function bindTabPanelEvents(tab) {
@@ -380,7 +436,11 @@ function bindTabPanelEvents(tab) {
         tab._eventsBound = true;
 
         tab.executeBtn?.addEventListener("click", () => {
-            executeQuery(tab.id);
+            if (tab.isExecuting) {
+                cancelCurrentQuery(tab.id);
+            } else {
+                executeQuery(tab.id);
+            }
         });
 
         // Clear editor
@@ -431,6 +491,35 @@ function bindTabPanelEvents(tab) {
 
         // Refresh parameters (auto-detect)
         tab.btnRefreshParameters?.addEventListener("click", () => refreshParameters(tab));
+
+        // Explain query
+        tab.btnExplain?.addEventListener("click", () => explainQuery(tab.id));
+
+        // Result Search filter
+        tab.resultSearchInput?.addEventListener("input", (e) => {
+            applyResultFilter(tab, e.target.value);
+        });
+
+        // View mode toggle
+        tab.btnViewGrid?.addEventListener("click", () => {
+            tab.btnViewGrid.classList.add("active");
+            tab.btnViewChart?.classList.remove("active");
+            tab.singleResultContainer?.classList.remove("hidden");
+            tab.chartContainer?.classList.add("hidden");
+        });
+
+        tab.btnViewChart?.addEventListener("click", () => {
+            tab.btnViewChart.classList.add("active");
+            tab.btnViewGrid?.classList.remove("active");
+            tab.singleResultContainer?.classList.add("hidden");
+            tab.chartContainer?.classList.remove("hidden");
+            renderChartForTab(tab.id);
+        });
+
+        tab.chartTypeSelect?.addEventListener("change", () => renderChartForTab(tab.id));
+        tab.chartXSelect?.addEventListener("change", () => renderChartForTab(tab.id));
+        tab.chartYSelect?.addEventListener("change", () => renderChartForTab(tab.id));
+        tab.btnExportChart?.addEventListener("click", () => exportChartPng(tab.id));
     }
 
     // Initialize query check
@@ -1083,6 +1172,13 @@ function loadTabConnectionSelection(tab) {
             if (check) check.textContent = isSelected ? "✓" : "";
         });
     }
+    if (selectedConnectionIds.size === 1) {
+        const singleId = Array.from(selectedConnectionIds)[0];
+        ensureSchemaMetadata(singleId);
+        renderSchemaExplorer(singleId);
+    } else {
+        renderSchemaExplorer(null);
+    }
 }
 
 function initializeQueryTabs() {
@@ -1353,6 +1449,25 @@ function setupEventListeners() {
         const tabBtn = e.target.closest(".query-tab");
         if (tabBtn && !closeBtn) {
             switchTab(tabBtn.dataset.tabId);
+        }
+    });
+
+    // Schema Explorer controls
+    document.getElementById("btn-refresh-schema")?.addEventListener("click", async () => {
+        if (selectedConnectionIds.size === 1) {
+            const connId = Array.from(selectedConnectionIds)[0];
+            schemaMetadataCache.delete(connId);
+            showToast("Refreshing schema...", "info");
+            await renderSchemaExplorer(connId);
+            showToast("Schema refreshed", "success");
+        } else {
+            showToast("Select a single connection to refresh schema", "info");
+        }
+    });
+
+    document.getElementById("schema-table-search")?.addEventListener("input", () => {
+        if (selectedConnectionIds.size === 1) {
+            renderSchemaExplorer(Array.from(selectedConnectionIds)[0]);
         }
     });
 }
@@ -1656,7 +1771,11 @@ async function renderQueryConnectionPanel() {
         ensureSchemaMetadata(items[0].id);
     }
     if (selectedConnectionIds.size === 1) {
-        ensureSchemaMetadata(Array.from(selectedConnectionIds)[0]);
+        const singleId = Array.from(selectedConnectionIds)[0];
+        ensureSchemaMetadata(singleId);
+        renderSchemaExplorer(singleId);
+    } else {
+        renderSchemaExplorer(null);
     }
     items.forEach(connection => {
         const item = document.createElement("button");
@@ -1664,7 +1783,9 @@ async function renderQueryConnectionPanel() {
         const isSelected = selectedConnectionIds.has(connection.id);
         item.className = `connection-panel-item${isSelected ? " selected" : ""}`;
         item.dataset.connectionId = connection.id;
-        item.innerHTML = `<span class="connection-panel-info"><span class="connection-panel-name">${escapeHtml(connection.name)}</span></span><span class="connection-panel-check">${isSelected ? "✓" : ""}</span>`;
+        const isSafe = Boolean(connection.extra_params && connection.extra_params.safe_mode);
+        const safeBadge = isSafe ? '<span class="conn-safe-badge" title="Safe Mode enabled">🛡️</span>' : '';
+        item.innerHTML = `<span class="connection-panel-info"><span class="connection-panel-name">${escapeHtml(connection.name)}</span>${safeBadge}</span><span class="connection-panel-check">${isSelected ? "✓" : ""}</span>`;
         item.addEventListener("click", () => {
             if (selectedConnectionIds.has(connection.id)) {
                 selectedConnectionIds.delete(connection.id);
@@ -1715,7 +1836,8 @@ function renderConnectionsList() {
                 ? (groups || []).filter(group => group.id === Number(groupFilter))
                 : (connection.groups || []);
             const groupLabels = (assignedGroups || []).map(group => `<span class="connection-group-badge">${escapeHtml(group.name)}</span>`).join("");
-            card.innerHTML = `<div class="connection-header"><h4>${escapeHtml(connection.name)}</h4><span class="db-type-badge">${escapeHtml(connection.db_type)}</span>${groupLabels}</div><div class="connection-details"><p><strong>Host:</strong> ${escapeHtml(connection.host || "N/A")}</p><p><strong>Port:</strong> ${escapeHtml(connection.port || "Default")}</p><p><strong>Database:</strong> ${escapeHtml(connection.database || "N/A")}</p><p><strong>Username:</strong> ${escapeHtml(connection.username || "N/A")}</p><p><strong>Password:</strong> ${connection.has_password ? "Saved (hidden)" : "Not set"}</p></div><div class="connection-actions"><button class="btn btn-icon btn-sm" data-action="test">Test</button>${currentUser?.role === "admin" ? `<button class="btn btn-icon btn-sm" data-action="edit">Edit</button><button class="btn btn-icon btn-sm danger" data-action="delete">Delete</button>` : ""}<button class="btn btn-icon btn-sm" data-action="use">Use</button></div>`;
+            const safeLabel = connection.extra_params?.safe_mode ? '<span class="connection-group-badge safe-mode-badge" title="Safe Mode enabled">🛡️ Safe</span>' : '';
+            card.innerHTML = `<div class="connection-header"><h4>${escapeHtml(connection.name)}</h4><span class="db-type-badge">${escapeHtml(connection.db_type)}</span>${groupLabels}${safeLabel}</div><div class="connection-details"><p><strong>Host:</strong> ${escapeHtml(connection.host || "N/A")}</p><p><strong>Port:</strong> ${escapeHtml(connection.port || "Default")}</p><p><strong>Database:</strong> ${escapeHtml(connection.database || "N/A")}</p><p><strong>Username:</strong> ${escapeHtml(connection.username || "N/A")}</p><p><strong>Password:</strong> ${connection.has_password ? "Saved (hidden)" : "Not set"}</p></div><div class="connection-actions"><button class="btn btn-icon btn-sm" data-action="test">Test</button>${currentUser?.role === "admin" ? `<button class="btn btn-icon btn-sm" data-action="edit">Edit</button><button class="btn btn-icon btn-sm danger" data-action="delete">Delete</button>` : ""}<button class="btn btn-icon btn-sm" data-action="use">Use</button></div>`;
             card.querySelector('[data-action="test"]')?.addEventListener("click", () => testConnection(connection.id));
             card.querySelector('[data-action="use"]')?.addEventListener("click", () => useConnection(connection.id));
             card.querySelector('[data-action="edit"]')?.addEventListener("click", () => showConnectionForm(connection));
@@ -1740,11 +1862,15 @@ function showConnectionForm(connection = null) {
         document.getElementById("conn-database").value = connection.database || "";
         document.getElementById("conn-username").value = connection.username || "";
         document.getElementById("conn-extra-params").value = JSON.stringify(connection.extra_params || {}, null, 2);
+        const safeModeEl = document.getElementById("conn-safe-mode");
+        if (safeModeEl) safeModeEl.checked = Boolean(connection.extra_params?.safe_mode);
         Array.from(connGroupSelect.options).forEach(option => { option.selected = connection.group_ids.includes(Number(option.value)); });
     } else {
         const defaultType = databases.find(database => database.available)?.type || databases[0]?.type || "";
         connDbTypeSelect.value = defaultType;
         applyDatabaseDefaults(defaultType);
+        const safeModeEl = document.getElementById("conn-safe-mode");
+        if (safeModeEl) safeModeEl.checked = false;
     }
     connPwdInput.value = ""; connPwdInput.type = "password";
 }
@@ -1754,6 +1880,12 @@ function connectionPayload() {
     if (raw) {
         extra = JSON.parse(raw);
         if (!extra || Array.isArray(extra) || typeof extra !== "object") throw new Error("Extra parameters must be a JSON object");
+    }
+    const safeModeEl = document.getElementById("conn-safe-mode");
+    if (safeModeEl && safeModeEl.checked) {
+        extra.safe_mode = true;
+    } else if (extra.safe_mode) {
+        delete extra.safe_mode;
     }
     const selected = Array.from(connGroupSelect.selectedOptions).map(option => option.value);
     return { name: document.getElementById("conn-name").value, db_type: connDbTypeSelect.value, host: document.getElementById("conn-host").value || null, port: document.getElementById("conn-port").value ? Number(document.getElementById("conn-port").value) : null, database: document.getElementById("conn-database").value || null, username: document.getElementById("conn-username").value || null, ...(connPwdInput.value ? { password: connPwdInput.value } : {}), extra_params: extra, group_ids: selected.map(Number) };
@@ -1814,25 +1946,83 @@ async function executeQuery(tabId) {
     if (!tab) return;
     ensureTabElementReferences(tab);
 
-    // Get SQL from CodeMirror or fallback textarea
+    // Get SQL from selection or full CodeMirror / fallback textarea
     let sql = "";
+    let isSelectedOnly = false;
     if (tab.editorView) {
-        sql = tab.editorView.state.doc.toString().trim();
+        const from = tab.editorView.state.selection.main.from;
+        const to = tab.editorView.state.selection.main.to;
+        if (from !== to) {
+            const selectedText = tab.editorView.state.sliceDoc(from, to).trim();
+            if (selectedText) {
+                sql = selectedText;
+                isSelectedOnly = true;
+            }
+        }
+        if (!sql) {
+            sql = tab.editorView.state.doc.toString().trim();
+        }
     } else if (tab.editorElement) {
-        sql = tab.editorElement.value.trim();
+        const start = tab.editorElement.selectionStart;
+        const end = tab.editorElement.selectionEnd;
+        if (start !== end) {
+            const selectedText = tab.editorElement.value.substring(start, end).trim();
+            if (selectedText) {
+                sql = selectedText;
+                isSelectedOnly = true;
+            }
+        }
+        if (!sql) {
+            sql = tab.editorElement.value.trim();
+        }
     }
 
     if (!sql) return showToast("Enter a SQL query first", "warning");
     if (tab.connectionIds.size === 0) return showToast("Select at least one connection", "warning");
 
-    if (tab.executeBtn) tab.executeBtn.disabled = true;
-    if (tab.executeText) tab.executeText.textContent = "Executing...";
+    // Safe mode protection
+    const safeConnections = Array.from(tab.connectionIds)
+        .map(id => (connections || []).find(c => c.id === id))
+        .filter(c => c && c.extra_params && c.extra_params.safe_mode);
+
+    if (safeConnections.length > 0) {
+        const isDestructive = /\b(DROP\s+TABLE|DROP\s+DATABASE|TRUNCATE|DELETE\s+FROM|ALTER\s+TABLE)\b/i.test(sql) || (/\bUPDATE\b/i.test(sql) && !/\bWHERE\b/i.test(sql));
+        if (isDestructive) {
+            const names = safeConnections.map(c => c.name).join(", ");
+            const confirmed = window.confirm(
+                `🛡️ Safe Mode Warning:\n` +
+                `Connection(s) [${names}] have Safe Mode enabled.\n` +
+                `The following potentially destructive statement was detected:\n\n` +
+                `"${sql.length > 150 ? sql.substring(0, 150) + "..." : sql}"\n\n` +
+                `Do you want to proceed with execution?`
+            );
+            if (!confirmed) {
+                return showToast("Execution cancelled by Safe Mode guard", "info");
+            }
+        }
+    }
+
+    if (isSelectedOnly) {
+        showToast("Executing selected SQL snippet...", "info");
+    }
+
+    const executionId = "exec-" + Date.now() + "-" + Math.random().toString(36).substring(2, 8);
+    tab.currentExecutionId = executionId;
+    tab.isExecuting = true;
+
+    if (tab.executeBtn) {
+        tab.executeBtn.disabled = false;
+        tab.executeBtn.classList.remove("btn-accent");
+        tab.executeBtn.classList.add("btn-danger");
+    }
+    if (tab.executeText) tab.executeText.textContent = "Cancel";
     tab.executeSpinner?.classList.remove("hidden");
     tab.resultsPlaceholder?.classList.add("hidden");
     tab.singleResultContainer?.classList.add("hidden");
     if (tab.singleResultContainer) tab.singleResultContainer.innerHTML = "";
     tab.multiResultsContainer?.classList.add("hidden");
     if (tab.multiResultsContainer) tab.multiResultsContainer.innerHTML = "";
+    tab.chartContainer?.classList.add("hidden");
     tab.errorContainer?.classList.add("hidden");
     tab.editActions?.classList.add("hidden");
     if (tab.btnExportCsv) tab.btnExportCsv.disabled = true;
@@ -1849,11 +2039,12 @@ async function executeQuery(tabId) {
             // Multi-connection execution
             const results = [];
             for (const connId of connIds) {
+                if (!tab.isExecuting) break;
                 try {
                     const result = await apiFetch("/api/query", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ connection_id: connId, query: sql, limit, parameters })
+                        body: JSON.stringify({ connection_id: connId, query: sql, limit, parameters, execution_id: executionId })
                     });
                     results.push({ connectionId: connId, success: true, data: result });
                 } catch (error) {
@@ -1867,7 +2058,7 @@ async function executeQuery(tabId) {
             const result = await apiFetch("/api/query", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ connection_id: connId, query: sql, limit, parameters })
+                body: JSON.stringify({ connection_id: connId, query: sql, limit, parameters, execution_id: executionId })
             });
             renderSingleResult(tab, connId, result);
         }
@@ -1881,7 +2072,13 @@ async function executeQuery(tabId) {
         if (tab.executionTime) tab.executionTime.textContent = "0 ms";
         showToast(`Query failed: ${error.message}`, "error");
     } finally {
-        if (tab.executeBtn) tab.executeBtn.disabled = false;
+        tab.isExecuting = false;
+        tab.currentExecutionId = null;
+        if (tab.executeBtn) {
+            tab.executeBtn.disabled = false;
+            tab.executeBtn.classList.remove("btn-danger");
+            tab.executeBtn.classList.add("btn-accent");
+        }
         if (tab.executeText) tab.executeText.textContent = "Execute";
         tab.executeSpinner?.classList.add("hidden");
     }
@@ -2262,6 +2459,578 @@ async function ensureSchemaMetadata(connectionId) {
     catch (_) { schemaMetadataCache.set(connectionId, { tables: [] }); }
 }
 
+async function cancelCurrentQuery(tabId) {
+    const tab = getTabById(tabId);
+    if (!tab || !tab.isExecuting) return;
+    if (tab.currentExecutionId) {
+        showToast("Cancelling query...", "info");
+        try {
+            await apiFetch("/api/query/cancel", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ execution_id: tab.currentExecutionId })
+            });
+            showToast("Cancellation signal sent", "info");
+        } catch (err) {
+            console.warn("Cancel request error:", err);
+        }
+    }
+    tab.isExecuting = false;
+    tab.currentExecutionId = null;
+    if (tab.executeBtn) {
+        tab.executeBtn.classList.remove("btn-danger");
+        tab.executeBtn.classList.add("btn-accent");
+    }
+    if (tab.executeText) tab.executeText.textContent = "Execute";
+    tab.executeSpinner?.classList.add("hidden");
+}
+
+async function explainQuery(tabId) {
+    const tab = getTabById(tabId);
+    if (!tab) return;
+    ensureTabElementReferences(tab);
+
+    let sql = "";
+    if (tab.editorView) {
+        const from = tab.editorView.state.selection.main.from;
+        const to = tab.editorView.state.selection.main.to;
+        if (from !== to) {
+            sql = tab.editorView.state.sliceDoc(from, to).trim();
+        }
+        if (!sql) {
+            sql = tab.editorView.state.doc.toString().trim();
+        }
+    } else if (tab.editorElement) {
+        const start = tab.editorElement.selectionStart;
+        const end = tab.editorElement.selectionEnd;
+        if (start !== end) {
+            sql = tab.editorElement.value.substring(start, end).trim();
+        }
+        if (!sql) {
+            sql = tab.editorElement.value.trim();
+        }
+    }
+
+    if (!sql) return showToast("Enter a SQL query first to explain", "warning");
+    if (tab.connectionIds.size === 0) return showToast("Select a connection first", "warning");
+    if (tab.connectionIds.size > 1) return showToast("EXPLAIN requires selecting a single connection", "warning");
+
+    const connId = Array.from(tab.connectionIds)[0];
+    const explainSql = /^EXPLAIN\b/i.test(sql) ? sql : `EXPLAIN ${sql}`;
+
+    showToast("Generating query execution plan...", "info");
+    try {
+        const result = await apiFetch("/api/query", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ connection_id: connId, query: explainSql, limit: 200 })
+        });
+        renderSingleResult(tab, connId, result);
+        showToast("Execution plan generated", "success");
+    } catch (err) {
+        showToast(`Explain failed: ${err.message}`, "error");
+    }
+}
+
+function applyResultFilter(tab, filterText) {
+    if (!tab || !tab.singleResultContainer) return;
+    const table = tab.singleResultContainer.querySelector("table.excel-grid");
+    if (!table) return;
+
+    const term = (filterText || "").trim().toLowerCase();
+    const rows = table.querySelectorAll("tbody tr");
+    if (!rows.length) return;
+
+    let visibleCount = 0;
+    rows.forEach(tr => {
+        if (!term) {
+            tr.style.display = "";
+            visibleCount++;
+        } else {
+            const text = tr.textContent.toLowerCase();
+            const matches = text.includes(term);
+            tr.style.display = matches ? "" : "none";
+            if (matches) visibleCount++;
+        }
+    });
+
+    if (tab.resultCount) {
+        const total = tab.currentResultData?.rows?.length || rows.length;
+        if (!term) {
+            tab.resultCount.textContent = `${total} row${total !== 1 ? "s" : ""}`;
+        } else {
+            tab.resultCount.textContent = `${visibleCount} of ${total} row${total !== 1 ? "s" : ""}`;
+        }
+    }
+}
+
+function renderChartForTab(tabId) {
+    const tab = getTabById(tabId);
+    if (!tab || !tab.chartCanvas) return;
+    ensureTabElementReferences(tab);
+
+    const data = tab.currentResultData;
+    if (!data || !data.columns || !data.rows || data.rows.length === 0) {
+        const ctx = tab.chartCanvas.getContext("2d");
+        ctx.clearRect(0, 0, tab.chartCanvas.width, tab.chartCanvas.height);
+        ctx.fillStyle = document.documentElement.dataset.theme === "dark" ? "#94a3b8" : "#64748b";
+        ctx.font = "14px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("No data available to chart. Execute a query with rows first.", tab.chartCanvas.width / 2, tab.chartCanvas.height / 2);
+        return;
+    }
+
+    const { columns, rows } = data;
+
+    const currentX = tab.chartXSelect?.value;
+    const currentY = tab.chartYSelect?.value;
+    const optionsHtml = columns.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+
+    if (tab.chartXSelect && tab.chartYSelect) {
+        if (tab.chartXSelect.options.length !== columns.length) {
+            tab.chartXSelect.innerHTML = optionsHtml;
+            tab.chartYSelect.innerHTML = optionsHtml;
+
+            tab.chartXSelect.value = columns[0];
+            let foundNumeric = false;
+            for (const col of columns) {
+                if (rows.some(r => typeof r[col] === "number" || (!isNaN(Number(r[col])) && r[col] !== null && r[col] !== ""))) {
+                    if (col !== columns[0]) {
+                        tab.chartYSelect.value = col;
+                        foundNumeric = true;
+                        break;
+                    }
+                }
+            }
+            if (!foundNumeric && columns.length > 1) {
+                tab.chartYSelect.value = columns[1];
+            }
+        } else {
+            if (currentX && columns.includes(currentX)) tab.chartXSelect.value = currentX;
+            if (currentY && columns.includes(currentY)) tab.chartYSelect.value = currentY;
+        }
+    }
+
+    const chartType = tab.chartTypeSelect?.value || "bar";
+    const xCol = tab.chartXSelect?.value || columns[0];
+    const yCol = tab.chartYSelect?.value || (columns[1] || columns[0]);
+
+    drawCanvasChart(tab.chartCanvas, chartType, xCol, yCol, rows);
+}
+
+function drawCanvasChart(canvas, type, xCol, yCol, rows) {
+    if (!canvas || !rows || !rows.length) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const width = rect.width > 50 ? rect.width : (canvas.width || 800);
+    const height = rect.height > 50 ? rect.height : (canvas.height || 360);
+
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+
+    const ctx = canvas.getContext("2d");
+    if (ctx.resetTransform) ctx.resetTransform();
+    ctx.scale(dpr, dpr);
+
+    const isDark = document.documentElement.dataset.theme === "dark";
+    const bgFill = isDark ? "#0f172a" : "#ffffff";
+    const textFill = isDark ? "#cbd5e1" : "#334155";
+    const subTextFill = isDark ? "#64748b" : "#94a3b8";
+    const gridLineFill = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)";
+
+    ctx.fillStyle = bgFill;
+    ctx.fillRect(0, 0, width, height);
+
+    const maxItems = 30;
+    const chartRows = rows.slice(0, maxItems);
+
+    const labels = chartRows.map((r, i) => {
+        const val = r[xCol];
+        if (val === null || val === undefined) return `Item ${i + 1}`;
+        const str = String(val);
+        return str.length > 14 ? str.substring(0, 12) + "…" : str;
+    });
+
+    const values = chartRows.map(r => {
+        const val = r[yCol];
+        const num = Number(val);
+        return isNaN(num) ? 0 : num;
+    });
+
+    const palette = [
+        "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
+        "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#14b8a6",
+        "#6366f1", "#eab308", "#a855f7", "#22c55e", "#0ea5e9"
+    ];
+
+    if (type === "pie" || type === "doughnut") {
+        const total = values.reduce((sum, v) => sum + Math.max(0, v), 0);
+        const centerX = width * 0.38;
+        const centerY = height * 0.5;
+        const radius = Math.min(centerX, centerY) * 0.78;
+        const innerRadius = type === "doughnut" ? radius * 0.52 : 0;
+
+        if (total <= 0) {
+            ctx.fillStyle = subTextFill;
+            ctx.font = "14px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("All values are zero or non-numeric", centerX, centerY);
+            return;
+        }
+
+        let startAngle = -Math.PI / 2;
+        values.forEach((val, i) => {
+            const sliceAngle = (Math.max(0, val) / total) * 2 * Math.PI;
+            const endAngle = startAngle + sliceAngle;
+            const color = palette[i % palette.length];
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+            if (innerRadius > 0) {
+                ctx.arc(centerX, centerY, innerRadius, endAngle, startAngle, true);
+            } else {
+                ctx.lineTo(centerX, centerY);
+            }
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = bgFill;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            startAngle = endAngle;
+        });
+
+        // Legend on the right side
+        const legendX = width * 0.70;
+        const legendCount = Math.min(values.length, 12);
+        let legendY = Math.max(25, centerY - (legendCount * 22) / 2);
+        ctx.textAlign = "left";
+        ctx.font = "12px sans-serif";
+
+        for (let i = 0; i < legendCount; i++) {
+            const color = palette[i % palette.length];
+            const pct = ((Math.max(0, values[i]) / total) * 100).toFixed(1);
+
+            ctx.fillStyle = color;
+            ctx.fillRect(legendX, legendY - 9, 12, 12);
+
+            ctx.fillStyle = textFill;
+            ctx.fillText(`${labels[i]}: ${values[i]} (${pct}%)`, legendX + 18, legendY);
+            legendY += 22;
+        }
+        if (values.length > 12) {
+            ctx.fillStyle = subTextFill;
+            ctx.fillText(`+ ${values.length - 12} more items`, legendX + 18, legendY);
+        }
+        return;
+    }
+
+    // Bar / Line Chart coordinates
+    const paddingLeft = 60;
+    const paddingRight = 30;
+    const paddingTop = 30;
+    const paddingBottom = 55;
+
+    const plotWidth = width - paddingLeft - paddingRight;
+    const plotHeight = height - paddingTop - paddingBottom;
+
+    const maxVal = Math.max(0, ...values);
+    const minVal = Math.min(0, ...values);
+    const niceMax = maxVal === 0 && minVal === 0 ? 10 : (maxVal <= 0 ? 0 : maxVal * 1.15);
+
+    // Draw grid lines and Y-axis scale
+    const steps = 5;
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "right";
+    for (let s = 0; s <= steps; s++) {
+        const yFrac = s / steps;
+        const yVal = (minVal + (niceMax - minVal) * (1 - yFrac));
+        const py = paddingTop + yFrac * plotHeight;
+
+        ctx.strokeStyle = gridLineFill;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft, py);
+        ctx.lineTo(width - paddingRight, py);
+        ctx.stroke();
+
+        ctx.fillStyle = subTextFill;
+        ctx.fillText(Number(yVal.toFixed(1)).toLocaleString(), paddingLeft - 8, py + 4);
+    }
+
+    // Baseline (Y=0)
+    const zeroY = paddingTop + (1 - (0 - minVal) / ((niceMax - minVal) || 1)) * plotHeight;
+    ctx.strokeStyle = subTextFill;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(paddingLeft, zeroY);
+    ctx.lineTo(width - paddingRight, zeroY);
+    ctx.stroke();
+
+    const count = values.length;
+    if (count === 0) return;
+
+    if (type === "bar") {
+        const slotWidth = plotWidth / count;
+        const barWidth = Math.max(8, Math.min(48, slotWidth * 0.65));
+
+        values.forEach((val, i) => {
+            const px = paddingLeft + i * slotWidth + (slotWidth - barWidth) / 2;
+            const h = ((val - Math.min(0, minVal)) / ((niceMax - Math.min(0, minVal)) || 1)) * plotHeight;
+            const py = zeroY - h;
+
+            const color = palette[i % palette.length];
+            ctx.fillStyle = color;
+            ctx.fillRect(px, py, barWidth, h);
+
+            ctx.fillStyle = textFill;
+            ctx.textAlign = "center";
+            ctx.font = "10px sans-serif";
+            if (barWidth >= 16) {
+                ctx.fillText(String(val), px + barWidth / 2, py - 4);
+            }
+
+            ctx.save();
+            ctx.translate(px + barWidth / 2, zeroY + 14);
+            ctx.rotate(count > 8 ? -Math.PI / 4 : 0);
+            ctx.fillStyle = textFill;
+            ctx.textAlign = count > 8 ? "right" : "center";
+            ctx.fillText(labels[i], 0, 0);
+            ctx.restore();
+        });
+    } else if (type === "line") {
+        const points = values.map((val, i) => {
+            const px = paddingLeft + (count === 1 ? plotWidth / 2 : (i / (count - 1)) * plotWidth);
+            const py = paddingTop + (1 - (val - minVal) / ((niceMax - minVal) || 1)) * plotHeight;
+            return { x: px, y: py, val, label: labels[i] };
+        });
+
+        // Area fill under line
+        const grad = ctx.createLinearGradient(0, paddingTop, 0, height - paddingBottom);
+        grad.addColorStop(0, "rgba(59, 130, 246, 0.3)");
+        grad.addColorStop(1, "rgba(59, 130, 246, 0.0)");
+
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, zeroY);
+        points.forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.lineTo(points[points.length - 1].x, zeroY);
+        ctx.closePath();
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        ctx.beginPath();
+        points.forEach((p, i) => {
+            if (i === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+        });
+        ctx.strokeStyle = "#3b82f6";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        points.forEach((p) => {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = "#3b82f6";
+            ctx.fill();
+            ctx.strokeStyle = bgFill;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.save();
+            ctx.translate(p.x, zeroY + 14);
+            ctx.rotate(count > 8 ? -Math.PI / 4 : 0);
+            ctx.fillStyle = textFill;
+            ctx.font = "10px sans-serif";
+            ctx.textAlign = count > 8 ? "right" : "center";
+            ctx.fillText(p.label, 0, 0);
+            ctx.restore();
+        });
+    }
+}
+
+function exportChartPng(tabId) {
+    const tab = getTabById(tabId);
+    if (!tab || !tab.chartCanvas) return;
+    try {
+        const link = document.createElement("a");
+        link.download = `query-chart-${Date.now()}.png`;
+        link.href = tab.chartCanvas.toDataURL("image/png");
+        link.click();
+        showToast("Chart exported as PNG", "success");
+    } catch (err) {
+        showToast("Export failed: " + err.message, "error");
+    }
+}
+
+function insertTextIntoActiveEditor(text) {
+    const tab = getActiveTab();
+    if (!tab) return;
+    ensureTabElementReferences(tab);
+
+    if (tab.editorView) {
+        const view = tab.editorView;
+        const main = view.state.selection.main;
+        view.dispatch({
+            changes: { from: main.from, to: main.to, insert: text },
+            selection: { anchor: main.from + text.length }
+        });
+        view.focus();
+    } else if (tab.editorElement) {
+        const el = tab.editorElement;
+        const start = el.selectionStart ?? el.value.length;
+        const end = el.selectionEnd ?? el.value.length;
+        el.value = el.value.substring(0, start) + text + el.value.substring(end);
+        el.selectionStart = el.selectionEnd = start + text.length;
+        el.focus();
+    }
+    tab.query = tab.editorView ? tab.editorView.state.doc.toString() : (tab.editorElement?.value || "");
+    tab.isDirty = true;
+    updateTabName(tab);
+    updateQueryCheckForTab(tab);
+    showToast(`Inserted "${text}" into editor`, "info");
+}
+
+function loadAndRunQueryInActiveTab(sqlText) {
+    const tab = getActiveTab();
+    if (!tab) return;
+    ensureTabElementReferences(tab);
+
+    if (tab.editorInstance) {
+        tab.editorInstance.setValue(sqlText);
+    } else if (tab.editorElement) {
+        tab.editorElement.value = sqlText;
+    }
+    tab.query = sqlText;
+    tab.isDirty = true;
+    updateTabName(tab);
+    updateQueryCheckForTab(tab);
+    executeQuery(tab.id);
+}
+
+async function renderSchemaExplorer(connectionId) {
+    const panel = document.getElementById("schema-explorer-section");
+    const connBadge = document.getElementById("schema-current-conn");
+    const emptyState = document.getElementById("schema-empty-state");
+    const treeList = document.getElementById("schema-tree-list");
+    if (!panel || !treeList) return;
+
+    if (!connectionId) {
+        if (connBadge) connBadge.textContent = "No connection";
+        if (emptyState) {
+            emptyState.classList.remove("hidden");
+            emptyState.innerHTML = "<p>Select a single connection to explore tables, columns, and foreign keys.</p>";
+        }
+        treeList.innerHTML = "";
+        return;
+    }
+
+    const connection = (connections || []).find(c => c.id === connectionId);
+    const connName = connection?.name || connectionId;
+    if (connBadge) connBadge.textContent = connName;
+
+    await ensureSchemaMetadata(connectionId);
+    const schema = schemaMetadataCache.get(connectionId) || { tables: [] };
+    const tables = schema.tables || [];
+
+    if (!tables.length) {
+        if (emptyState) {
+            emptyState.classList.remove("hidden");
+            emptyState.innerHTML = `<p>No tables found in ${escapeHtml(connName)}.</p>`;
+        }
+        treeList.innerHTML = "";
+        return;
+    }
+
+    if (emptyState) emptyState.classList.add("hidden");
+
+    const searchInput = document.getElementById("schema-table-search");
+    const query = (searchInput?.value || "").trim().toLowerCase();
+
+    treeList.innerHTML = "";
+    tables.forEach(table => {
+        const tableName = typeof table === "string" ? table : table.name;
+        const columns = table.columns || [];
+        const fks = new Set((table.foreign_keys || []).map(fk => fk.column || fk.from_column));
+
+        if (query) {
+            const tableMatch = tableName.toLowerCase().includes(query);
+            const colMatch = columns.some(c => (c.name || c).toLowerCase().includes(query));
+            if (!tableMatch && !colMatch) return;
+        }
+
+        const li = document.createElement("li");
+        li.className = "schema-table-item";
+
+        const row = document.createElement("div");
+        row.className = "schema-table-row";
+        row.innerHTML = `
+            <button type="button" class="schema-toggle-btn" aria-label="Toggle ${escapeHtml(tableName)} columns">▶</button>
+            <span class="schema-table-name" title="Click to insert table name">${escapeHtml(tableName)}</span>
+            <div class="schema-table-quick-actions">
+                <button type="button" class="btn btn-ghost btn-xs schema-action-select" title="Query first 100 rows">SELECT</button>
+            </div>
+        `;
+
+        const sublist = document.createElement("ul");
+        sublist.className = "schema-column-sublist hidden";
+
+        if (columns.length > 0) {
+            columns.forEach(col => {
+                const colName = typeof col === "string" ? col : col.name;
+                const colType = typeof col === "object" && col.type ? col.type : "";
+                const isPk = typeof col === "object" && Boolean(col.is_primary_key);
+                const isFk = fks.has(colName);
+
+                const colLi = document.createElement("li");
+                colLi.className = "schema-column-item";
+                colLi.innerHTML = `
+                    <span class="schema-col-name" title="Click to insert column">${escapeHtml(colName)}</span>
+                    <span class="schema-col-meta">
+                        ${isPk ? '<span class="schema-badge-pk" title="Primary Key">🔑 PK</span>' : ""}
+                        ${isFk ? '<span class="schema-badge-fk" title="Foreign Key">🔗 FK</span>' : ""}
+                        ${colType ? `<span class="schema-col-type">${escapeHtml(colType)}</span>` : ""}
+                    </span>
+                `;
+                colLi.querySelector(".schema-col-name")?.addEventListener("click", () => {
+                    insertTextIntoActiveEditor(colName);
+                });
+                sublist.appendChild(colLi);
+            });
+        } else {
+            const emptyColLi = document.createElement("li");
+            emptyColLi.className = "schema-column-item schema-empty-cols";
+            emptyColLi.textContent = "No columns listed";
+            sublist.appendChild(emptyColLi);
+        }
+
+        const toggleBtn = row.querySelector(".schema-toggle-btn");
+        const toggleExpand = () => {
+            const isHidden = sublist.classList.contains("hidden");
+            sublist.classList.toggle("hidden", !isHidden);
+            toggleBtn.textContent = isHidden ? "▼" : "▶";
+        };
+        toggleBtn.addEventListener("click", e => {
+            e.stopPropagation();
+            toggleExpand();
+        });
+
+        row.querySelector(".schema-table-name")?.addEventListener("click", () => {
+            insertTextIntoActiveEditor(tableName);
+        });
+
+        row.querySelector(".schema-action-select")?.addEventListener("click", e => {
+            e.stopPropagation();
+            loadAndRunQueryInActiveTab(`SELECT * FROM ${tableName} LIMIT 100;`);
+        });
+
+        li.appendChild(row);
+        li.appendChild(sublist);
+        treeList.appendChild(li);
+    });
+}
+
 // --- Rest of the functions (unchanged from original) ---
 
 async function fetchHistory() { try { renderHistoryList(await apiFetch("/api/history")); } catch (error) { showToast(error.message, "error"); } }
@@ -2376,3 +3145,12 @@ window.buildEditableGrid = buildEditableGrid;
 window.handleCellEdit = handleCellEdit;
 window.renderSingleResult = renderSingleResult;
 window.renderMultiResults = renderMultiResults;
+window.cancelCurrentQuery = cancelCurrentQuery;
+window.explainQuery = explainQuery;
+window.applyResultFilter = applyResultFilter;
+window.renderChartForTab = renderChartForTab;
+window.drawCanvasChart = drawCanvasChart;
+window.exportChartPng = exportChartPng;
+window.renderSchemaExplorer = renderSchemaExplorer;
+window.insertTextIntoActiveEditor = insertTextIntoActiveEditor;
+window.loadAndRunQueryInActiveTab = loadAndRunQueryInActiveTab;

@@ -60,7 +60,7 @@ from app.auth import (
     totp_provisioning_uri,
     verify_totp,
 )
-from app.db_service import DatabaseType, apply_query_edits, execute_query, get_schema_metadata, get_supported_databases, test_connection, validate_query
+from app.db_service import DatabaseType, apply_query_edits, cancel_query, execute_query, get_schema_metadata, get_supported_databases, test_connection, validate_query
 from app.migrations import normalize_json, run_migrations
 
 
@@ -85,7 +85,7 @@ USE_POSTGRES = bool(DATABASE_URL)
 app = FastAPI(
     title="Query Execute",
     description="A secure, multi-database SQL query workspace.",
-    version="1.1.1",
+    version="1.2.0",
 )
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -850,6 +850,11 @@ class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=200_000)
     limit: Optional[int] = Field(default=1000, ge=1, le=10000)
     parameters: Optional[Any] = Field(default=None, description="Query bind parameters (dict or list)")
+    execution_id: Optional[str] = Field(default=None, max_length=100, description="Optional client execution tracking ID")
+
+
+class QueryCancelRequest(BaseModel):
+    execution_id: str = Field(..., min_length=1, max_length=100)
 
 
 class QueryValidationRequest(BaseModel):
@@ -1930,6 +1935,7 @@ async def execute_query_endpoint(payload: QueryRequest, user: Dict[str, Any] = D
             limit=payload.limit or 1000,
             role=user["role"],
             parameters=payload.parameters,
+            execution_id=payload.execution_id,
             **params,
         )
         elapsed = int((time.time() - start_time) * 1000)
@@ -1949,6 +1955,11 @@ async def execute_query_endpoint(payload: QueryRequest, user: Dict[str, Any] = D
         elapsed = int((time.time() - start_time) * 1000)
         _save_query_history(user["id"], payload.connection_id, payload.query, False, 0, elapsed, str(exc))
         raise HTTPException(status_code=500, detail="Query execution failed") from exc
+
+
+@app.post("/api/query/cancel")
+async def cancel_query_endpoint(payload: QueryCancelRequest, user: Dict[str, Any] = Depends(current_user)):
+    return cancel_query(payload.execution_id)
 
 
 @app.get("/api/history", response_model=List[QueryHistoryItem])

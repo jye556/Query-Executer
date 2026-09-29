@@ -1,6 +1,20 @@
 {
-  "version": "1.1.1",
+  "version": "1.2.0",
   "releases": [
+    {
+      "version": "1.2.0",
+      "date": "2026-09-29",
+      "notes": [
+        "Interactive Schema & Object Explorer in sidebar: tree view for tables, columns, data types, primary keys, and foreign keys.",
+        "One-click schema actions: quick SELECT top 100 rows and click-to-insert table/column names into the active editor.",
+        "Run Selected SQL snippet: execute only the highlighted query portion or full editor content if nothing is selected.",
+        "Query Cancellation: cancel long-running queries in real-time via the active execution token and Cancel Query button.",
+        "In-Grid Instant Search & Quick Filter: fast multi-column filtering of tabular query results with live row count.",
+        "Data Visualization & Chart Mode: interactive Bar, Line, Pie, and Doughnut charts with light/dark theme support and PNG export.",
+        "Connection Safe Mode & Read-Only Guard: prevent accidental DROP, TRUNCATE, or unconditional DELETE/UPDATE on production databases with an interactive confirmation guard.",
+        "Visual EXPLAIN execution plan: inspect query performance and execution paths with one-click Explain."
+      ]
+    },
     {
       "version": "1.1.1",
       "date": "2026-09-29",
