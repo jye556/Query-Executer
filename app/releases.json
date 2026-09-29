@@ -1,6 +1,16 @@
 {
-  "version": "1.6.0",
+  "version": "1.7.0",
   "releases": [
+    {
+      "version": "1.7.0",
+      "date": "2026-09-29",
+      "notes": [
+        "1-Click REST API Generation: Expose any saved query as a secure REST API endpoint instantly, turning the app into a backend-as-a-service.",
+        "Enterprise Audit Logging: Admin-only dashboard providing a full historical ledger of all executed queries, users, connection targets, and status.",
+        "Cross-Database Data Sync (ETL): Scheduled Tasks can now automatically extract data from one connection and insert it into a completely different database connection.",
+        "Safe Mode Auto-Rollbacks: Destructive queries (UPDATE/DELETE) on Safe Mode connections are safely rolled back and previewed to the user before forcing a final commit."
+      ]
+    },
     {
       "version": "1.6.0",
       "date": "2026-09-29",

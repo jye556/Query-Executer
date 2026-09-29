@@ -1289,6 +1289,7 @@ async function initialize() {
         initDashboardEvents();
         initAIEvents();
         initDBMonitorEvents();
+        initAuditEvents();
         initSchemaDiffEvents();
         initGlobalExportEvents();
     } catch (err) {
@@ -1710,6 +1711,7 @@ function switchView(viewId) {
     if (viewId === "scheduled-tasks-section") loadScheduledTasks();
     if (viewId === "dashboard-section") loadDashboardMetrics();
     if (viewId === "db-monitor-section") { loadDBMonitorConnections(); loadDBMonitor(); }
+    if (viewId === "audit-logs-section") loadAuditLogs();
     if (viewId === "snippets-section" && window.SnippetsManager) {
         window.SnippetsManager.loadSnippets().then(() => window.SnippetsManager.renderSnippetsPanel());
     }
@@ -3537,6 +3539,7 @@ function renderSavedQueriesList() {
             </div>
             <div class="snippet-actions">
                 <button type="button" class="btn btn-ghost btn-sm" onclick="loadSavedQueryIntoEditor(${q.id})" title="Load into editor">Load</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="generateApiForQuery(${q.id})" title="Expose as REST API" style="color:var(--primary);">API</button>
                 <button type="button" class="btn btn-ghost btn-sm" onclick="editSavedQuery(${q.id})" title="Edit">Edit</button>
                 <button type="button" class="btn btn-ghost btn-sm" onclick="deleteSavedQuery(${q.id})" title="Delete" style="color:var(--error);">Delete</button>
             </div>
@@ -4498,3 +4501,57 @@ function initCommandPalette() {
 document.addEventListener("DOMContentLoaded", () => {
     initCommandPalette();
 });
+
+
+// ── Audit Logs ──
+function initAuditEvents() {
+    document.getElementById("btn-refresh-audit")?.addEventListener("click", loadAuditLogs);
+}
+
+async function loadAuditLogs() {
+    const tbody = document.getElementById("audit-logs-tbody");
+    if (!tbody) return;
+    
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Loading audit logs...</td></tr>';
+    
+    try {
+        const response = await fetch('/api/audit-logs');
+        if (!response.ok) throw new Error("Failed to load logs");
+        const logs = await response.json();
+        
+        if (logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No audit logs found.</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = "";
+        logs.forEach(l => {
+            const tr = document.createElement("tr");
+            const status = l.success ? '<span style="color:var(--success);">Success</span>' : `<span style="color:var(--error);" title="${escapeHtml(l.error_message || 'Error')}">Failed</span>`;
+            
+            tr.innerHTML = `
+                <td style="white-space: nowrap;">${new Date(l.executed_at).toLocaleString()}</td>
+                <td>${escapeHtml(l.username || 'System')}</td>
+                <td>${escapeHtml(l.connection_name || '-')}</td>
+                <td>${status}</td>
+                <td>${l.row_count ?? '-'}</td>
+                <td>${l.execution_time_ms ? l.execution_time_ms + 'ms' : '-'}</td>
+                <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(l.query)}"><code style="background: var(--bg); padding: 2px 4px; border-radius: 3px;">${escapeHtml(l.query)}</code></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--error);">${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+
+window.generateApiForQuery = async function(id) {
+    try {
+        const response = await apiFetch(`/api/saved-queries/${id}/public-api`, { method: "POST" });
+        const fullUrl = window.location.origin + response.url;
+        showAiAnalysisModal(`### API Generated Successfully!\n\nYour query is now available as a REST API endpoint.\n\n**URL:**\n\`${fullUrl}\`\n\n**API Key (Header \`X-API-Key\` or Query Param \`?api_key=\`):**\n\`${response.api_key}\`\n\n**Example Usage (cURL):**\n\`\`\`bash\ncurl -X GET "${fullUrl}" -H "X-API-Key: ${response.api_key}"\n\`\`\``);
+    } catch(err) {
+        showToast("Failed to generate API: " + err.message, "error");
+    }
+};

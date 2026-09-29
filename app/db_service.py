@@ -1381,6 +1381,7 @@ def execute_query(
     role: str = "viewer",
     parameters: Optional[Dict[str, Any]] = None,
     execution_id: Optional[str] = None,
+    force_commit: bool = False,
 ) -> Dict[str, Any]:
     # Validate query first (without parameters)
     ok, validation_error, query_text, _ = validate_query(query, role, db_type, {"host": host, "port": port, "database": database, "username": username, "password": password, "extra_params": extra_params or {}})
