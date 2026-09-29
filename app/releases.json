@@ -1,6 +1,17 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "releases": [
+    {
+      "version": "1.5.0",
+      "date": "2026-09-29",
+      "notes": [
+        "AI Text-to-SQL Assistant: Generate SQL queries automatically from natural language prompts using the new AI Assistant button.",
+        "Interactive Visual Dashboards: Dashboards now support full visual rendering for queries tagged with 'chart_bar', 'chart_pie', or 'chart_line'.",
+        "Active Database Monitor: Admin-only dashboard to view actively running queries (pg_stat_activity/SHOW PROCESSLIST) and forcefully kill stuck sessions.",
+        "Data Masking & Redaction: Automatic server-side redaction of sensitive columns (e.g., passwords, emails, SSNs) returning masked values like '***' or 'j***@domain.com'.",
+        "Query Parameters UX: Added native frontend UI support for query parameter substitution and binding."
+      ]
+    },
     {
       "version": "1.4.0",
       "date": "2026-09-29",

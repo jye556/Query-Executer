@@ -1447,11 +1447,34 @@ def execute_query(
                     results.append({column: _serialize_value(row[column]) for column in columns})
                 else:
                     results.append({column: _serialize_value(row[i]) for i, column in enumerate(columns)})
+            
+            # Data Masking (Tier 3 Enhancement)
+            sensitive_keywords = ["email", "password", "ssn", "credit_card", "secret", "token", "hash"]
+            masked_columns = [col for col in columns if any(kw in col.lower() for kw in sensitive_keywords)]
+            
+            if masked_columns:
+                for row_dict in results:
+                    for col in masked_columns:
+                        val = row_dict[col]
+                        if val is not None and str(val).strip() != "":
+                            sval = str(val)
+                            # Mask logic
+                            if "@" in sval:
+                                parts = sval.split("@")
+                                row_dict[col] = parts[0][:2] + "***@" + parts[1]
+                            elif len(sval) > 4:
+                                row_dict[col] = "***-" + sval[-4:]
+                            else:
+                                row_dict[col] = "***"
+
             if len(raw_rows) < safe_limit:
-                try:
-                    edit_context = _edit_context_for_query(query_text, columns, results, **params)
-                except Exception:
-                    edit_context = {"editable": False, "reason": "Editing is unavailable for this result"}
+                if masked_columns:
+                    edit_context = {"editable": False, "reason": "Editing disabled: Results contain masked sensitive data"}
+                else:
+                    try:
+                        edit_context = _edit_context_for_query(query_text, columns, results, **params)
+                    except Exception:
+                        edit_context = {"editable": False, "reason": "Editing is unavailable for this result"}
             else:
                 edit_context = {"editable": False, "reason": "Truncated results cannot be edited"}
             conn.commit()
