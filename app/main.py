@@ -87,7 +87,7 @@ USE_POSTGRES = bool(DATABASE_URL)
 app = FastAPI(
     title="Query Execute",
     description="A secure, multi-database SQL query workspace.",
-    version="1.5.0",
+    version="1.6.0",
 )
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -2922,5 +2922,88 @@ async def kill_db_session(connection_id: str, pid: str, user: Dict[str, Any] = D
         finally:
             target_cur.close()
             target_conn.close()
+    finally:
+        conn.close()
+
+
+class AnalyzeDataRequest(BaseModel):
+    query: str
+    results: List[Dict[str, Any]]
+    prompt: Optional[str] = None
+
+@app.post("/api/ai/analyze-data")
+async def analyze_data_results(request: AnalyzeDataRequest, user: Dict[str, Any] = Depends(current_user)):
+    # Mock AI analysis based on results data
+    # In a real environment, this sends `request.results` to OpenAI/Gemini
+    
+    if not request.results:
+        return {"analysis": "No data provided to analyze."}
+        
+    num_rows = len(request.results)
+    columns = list(request.results[0].keys()) if num_rows > 0 else []
+    
+    # Basic heuristic analysis
+    numeric_cols = []
+    for col in columns:
+        if all(isinstance(r.get(col), (int, float)) for r in request.results if r.get(col) is not None):
+            numeric_cols.append(col)
+            
+    analysis = f"### AI Data Analysis\n\nI analyzed **{num_rows} rows** across **{len(columns)} columns** (`{', '.join(columns[:5])}{'...' if len(columns) > 5 else ''}`).\n\n"
+    
+    if request.prompt:
+        analysis += f"**Your Question:** {request.prompt}\n\n"
+        
+    if numeric_cols:
+        analysis += "#### Key Numeric Insights:\n"
+        for col in numeric_cols[:3]:
+            values = [r[col] for r in request.results if r.get(col) is not None]
+            if values:
+                avg = sum(values) / len(values)
+                mx = max(values)
+                mn = min(values)
+                analysis += f"- **{col}**: ranges from {mn} to {mx} (Average: {avg:.2f}).\n"
+    else:
+        analysis += "This dataset appears to be mostly categorical or text-based. I couldn't find distinct numerical trends without further context.\n"
+        
+    analysis += "\n*(Note: This is a simulated local AI analysis. Provide an API key in settings to enable deep LLM insights!)*"
+    
+    return {"analysis": analysis}
+
+
+@app.post("/api/saved-queries/sync")
+async def sync_saved_queries_to_disk(user: Dict[str, Any] = Depends(current_user)):
+    import os
+    import re
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        if USE_POSTGRES:
+            cur.execute("SELECT * FROM saved_queries WHERE user_id = %s", (user["id"],))
+        else:
+            cur.execute("SELECT * FROM saved_queries WHERE user_id = ?", (user["id"],))
+        queries = cur.fetchall()
+        cur.close()
+        
+        # Write to disk
+        export_dir = "saved_queries_export"
+        os.makedirs(export_dir, exist_ok=True)
+        
+        count = 0
+        for q in queries:
+            safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', q["name"].lower())
+            file_path = os.path.join(export_dir, f"{safe_name}.sql")
+            
+            header = f"-- Name: {q['name']}\n"
+            if q.get("tags"):
+                header += f"-- Tags: {q['tags']}\n"
+            if q.get("connection_id"):
+                header += f"-- Connection ID: {q['connection_id']}\n"
+            header += "\n"
+            
+            with open(file_path, "w", encoding="utf-8") as out:
+                out.write(header + q["sql"])
+            count += 1
+            
+        return {"success": True, "count": count, "directory": export_dir}
     finally:
         conn.close()

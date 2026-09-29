@@ -1,6 +1,16 @@
 {
-  "version": "1.5.0",
+  "version": "1.6.0",
   "releases": [
+    {
+      "version": "1.6.0",
+      "date": "2026-09-29",
+      "notes": [
+        "Global Command Palette (Cmd+K / Ctrl+K): Lightning-fast fuzzy search to jump to connections, queries, or actions directly from the keyboard.",
+        "AI Chat with Data: Added an 'Analyze' button to the results grid to generate automated Markdown insights and statistical summaries of your query results.",
+        "Slack & Teams Alerting: Scheduled Queries now support Webhook URLs to automatically post execution results to your company chat.",
+        "Git-Backed Queries (Sync to Disk): Export all saved queries to .sql files on the local filesystem for easy Git version control and backups."
+      ]
+    },
     {
       "version": "1.5.0",
       "date": "2026-09-29",
