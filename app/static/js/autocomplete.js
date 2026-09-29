@@ -6,6 +6,12 @@
  * Integrates with CodeMirror 6 autocomplete system
  */
 
+function escapeHtml(value) {
+    const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
+    return String(value ?? "").replace(/[&<>"']/g, char => map[char]);
+}
+
+
 // Schema metadata cache
 const schemaCache = new Map();
 
@@ -268,24 +274,31 @@ async function initializeAutocomplete(tab) {
  * Create autocomplete extension for CodeMirror
  */
 function createAutocompleteExtension(tabId, connectionId) {
-    return EditorView.domEventHandlers({
+    const EditorViewClass = (typeof window !== "undefined" && window.EditorView) ? window.EditorView : (typeof EditorView !== "undefined" ? EditorView : null);
+    if (!EditorViewClass || !EditorViewClass.domEventHandlers) return [];
+    return EditorViewClass.domEventHandlers({
         keydown: (event, view) => {
-            // Trigger autocomplete on Ctrl+Space or .
-            if ((event.key === ' ' && (event.ctrlKey || event.metaKey)) || 
-                (event.key === '.' && !event.ctrlKey && !event.metaKey)) {
-                
+            // Trigger autocomplete on Ctrl+Space
+            if (event.key === ' ' && (event.ctrlKey || event.metaKey)) {
                 event.preventDefault();
-                
-                // Get current suggestions
-                const tab = getTabById(tabId);
+                const tab = (typeof window !== "undefined" && typeof window.getTabById === "function") ? window.getTabById(tabId) : (typeof getTabById === "function" ? getTabById(tabId) : null);
                 if (!tab || !tab.schema) return false;
-                
                 const suggestions = getAutocompleteSuggestions(view, connectionId, tab.schema);
-                
-                // Show autocomplete panel
-                showAutocompletePanel(view, suggestions);
-                
-                return true;
+                if (suggestions.length > 0) {
+                    showAutocompletePanel(view, suggestions);
+                    return true;
+                }
+            }
+            // Trigger autocomplete on period without blocking the dot from being typed
+            if (event.key === '.' && !event.ctrlKey && !event.metaKey) {
+                setTimeout(() => {
+                    const tab = (typeof window !== "undefined" && typeof window.getTabById === "function") ? window.getTabById(tabId) : (typeof getTabById === "function" ? getTabById(tabId) : null);
+                    if (!tab || !tab.schema) return;
+                    const suggestions = getAutocompleteSuggestions(view, connectionId, tab.schema);
+                    if (suggestions.length > 0) {
+                        showAutocompletePanel(view, suggestions);
+                    }
+                }, 20);
             }
             return false;
         }
@@ -299,6 +312,8 @@ function showAutocompletePanel(view, suggestions) {
     const existing = document.querySelector('.autocomplete-panel');
     if (existing) existing.remove();
     
+    if (!suggestions || suggestions.length === 0) return;
+
     const panel = document.createElement('div');
     panel.className = 'autocomplete-panel';
     panel.style.cssText = `
@@ -324,8 +339,14 @@ function showAutocompletePanel(view, suggestions) {
     
     // Position near cursor
     const coords = view.coordsAtPos(view.state.selection.main.head);
-    panel.style.top = `${coords.bottom + 5}px`;
-    panel.style.left = `${coords.left}px`;
+    if (coords) {
+        panel.style.top = `${coords.bottom + 5}px`;
+        panel.style.left = `${coords.left}px`;
+    } else {
+        const rect = view.dom.getBoundingClientRect();
+        panel.style.top = `${rect.top + 40}px`;
+        panel.style.left = `${rect.left + 20}px`;
+    }
     
     document.body.appendChild(panel);
     
@@ -334,9 +355,13 @@ function showAutocompletePanel(view, suggestions) {
         const item = e.target.closest('.autocomplete-item');
         if (item) {
             const insertText = item.dataset.insert;
+            const head = view.state.selection.main.head;
+            const before = view.state.doc.sliceString(0, head);
+            const tokenMatch = before.match(/[A-Za-z_][A-Za-z0-9_$]*$/);
+            const insertPos = tokenMatch ? head - tokenMatch[0].length : view.state.selection.main.from;
             view.dispatch({
                 changes: { 
-                    from: view.state.selection.main.from, 
+                    from: insertPos, 
                     to: view.state.selection.main.to, 
                     insert: insertText 
                 }
@@ -368,7 +393,8 @@ function clearSchemaCache(connectionId) {
  * Refresh autocomplete for a tab
  */
 async function refreshAutocomplete(tabId) {
-    const tab = getTabById(tabId);
+    const tabFinder = (typeof window !== "undefined" && typeof window.getTabById === "function") ? window.getTabById : (typeof getTabById === "function" ? getTabById : null);
+    const tab = tabFinder ? tabFinder(tabId) : null;
     if (!tab || !tab.connectionIds.size) return;
     
     const connectionId = Array.from(tab.connectionIds)[0];
@@ -376,7 +402,7 @@ async function refreshAutocomplete(tabId) {
     await loadSchemaMetadata(connectionId);
     
     // Reinitialize autocomplete
-    const tabObj = getTabById(tabId);
+    const tabObj = tabFinder ? tabFinder(tabId) : null;
     if (tabObj && tabObj.editorInstance) {
         await initializeAutocomplete(tabObj);
     }

@@ -41,25 +41,24 @@ async function loadSqlFormatter() {
 async function formatSql(sql, options = {}) {
     if (!sql || !sql.trim()) return sql;
 
-    const formatter = await loadSqlFormatter();
-    if (!formatter) return sql;
-
-    const config = {
-        language: options.dialect || "sql",
-        indent: options.indent || "  ",
-        keywordCase: options.keywordCase || "upper",
-        linesBetweenQueries: options.linesBetweenQueries || 1,
-        tabWidth: options.tabWidth || 2,
-        useTabs: options.useTabs || false,
-        ...options
-    };
-
     try {
-        return formatter.format(sql, config);
+        const formatter = await loadSqlFormatter();
+        if (formatter) {
+            const config = {
+                language: options.dialect || "sql",
+                indent: options.indent || "  ",
+                keywordCase: options.keywordCase || "upper",
+                linesBetweenQueries: options.linesBetweenQueries || 1,
+                tabWidth: options.tabWidth || 2,
+                useTabs: options.useTabs || false,
+                ...options
+            };
+            return formatter.format(sql, config);
+        }
     } catch (error) {
-        console.error("SQL formatting error:", error);
-        return sql; // Return original on error
+        console.warn("SQL formatter CDN unavailable, applying basic format:", error);
     }
+    return formatSqlSync(sql, options.dialect || "sql");
 }
 
 /**
@@ -150,10 +149,33 @@ function getFormatterOptions(preferences = {}) {
  * Format SQL in CodeMirror editor
  */
 async function formatEditorSql(tabId, options = {}) {
-    if (!window.CodeMirrorEditor) return;
+    const instance = window.CodeMirrorEditor?.getEditorInstance(tabId);
+    const tab = (typeof window.getTabById === "function") ? window.getTabById(tabId) : (window.queryTabs || []).find(t => t.id === tabId);
 
-    const instance = window.CodeMirrorEditor.getEditorInstance(tabId);
-    if (!instance) return;
+    if (!instance) {
+        if (tab?.editorElement) {
+            try {
+                const textarea = tab.editorElement;
+                const fullSql = textarea.value;
+                const prefs = window.editorPreferences?.[tabId] || {};
+                const options_ = {
+                    dialect: detectSqlDialect(fullSql),
+                    indent: prefs.indent || "  ",
+                    keywordCase: prefs.keywordCase || "upper",
+                    ...options
+                };
+                const formatted = await formatSql(fullSql, options_);
+                textarea.value = formatted;
+                tab.query = formatted;
+                tab.isDirty = true;
+                if (window.updateTabName) window.updateTabName(tab);
+                if (window.showToast) window.showToast("SQL formatted successfully", "success");
+            } catch (err) {
+                console.error("Failed to format textarea SQL:", err);
+            }
+        }
+        return;
+    }
 
     const editor = instance.view;
     const state = editor.state;

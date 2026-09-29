@@ -70,28 +70,28 @@ def _db_name(db_type: Any) -> str:
 
 
 # Module-level regex patterns for parameter parsing
-PG_PATTERN = re.compile(r'\$(\d+)')
-NAMED_PATTERN = re.compile(r':([a-zA-Z_][a-zA-Z0-9_]*)')
-AT_PATTERN = re.compile(r'@([a-zA-Z_][a-zA-Z0-9_]*)')
-PYFORMAT_PATTERN = re.compile(r'%\(([a-zA-Z_][a-zA-Z0-9_]*)\)s')
-NUMBERED_QMARK = re.compile(r'\?(\d+)')
-SIMPLE_QMARK = re.compile(r'\?')
+# Matches single-quoted strings, double-quoted strings, block comments, and line comments
+# to ensure parameter placeholders inside literals and comments are ignored.
+SQL_TOKEN_PATTERN = re.compile(
+    r"'(?:''|[^'])*'"                             # Single-quoted string
+    r'|"(?:""|[^"])*"'                           # Double-quoted string
+    r'|/\*[\s\S]*?\*/'                            # Block comment
+    r'|--[^\r\n]*'                                # Line comment
+    r'|(?P<pg>\$(\d+))'                           # $1, $2 - PostgreSQL positional
+    r'|(?P<pyformat>%\(([a-zA-Z_][a-zA-Z0-9_]*)\)s)' # %(name)s - Python format
+    r'|(?<!:)(?P<named>:([a-zA-Z_][a-zA-Z0-9_]*))(?!:)' # :name - named params (excluding :: casts)
+    r'|(?P<at>@([a-zA-Z_][a-zA-Z0-9_]*))'        # @name - SQL Server
+    r'|(?P<num_qmark>\?(\d+))'                   # ?1, ?2 - numbered question marks
+    r'|(?P<qmark>\?)'                            # ? - simple positional
+)
 
 
 def _detect_parameter_style(db_type: str) -> str:
-    """Return the native parameter style for a database type."""
+    """Return the native driver parameter style ('format' for %s or 'qmark' for ?)."""
     name = _db_name(db_type)
-    if name == DatabaseType.POSTGRESQL.value:
-        return "postgresql"  # $1, $2, ...
-    if name in {"mysql", "mariadb"}:
-        return "qmark"  # ?
-    if name == DatabaseType.MSSQL.value:
-        return "pyformat"  # @name or ?
-    if name == DatabaseType.SQLITE.value:
-        return "qmark"  # ?
-    if name == DatabaseType.FIREBIRD.value:
-        return "qmark"  # ?
-    return "pyformat"  # Default: %s or %(name)s
+    if name in {DatabaseType.POSTGRESQL.value, DatabaseType.MYSQL.value, "mariadb"}:
+        return "format"  # psycopg2 and pymysql use %s
+    return "qmark"  # sqlite3, pyodbc, and fdb use ?
 
 
 def parse_query_parameters(query: str) -> List[Dict[str, Any]]:
@@ -107,78 +107,67 @@ def parse_query_parameters(query: str) -> List[Dict[str, Any]]:
 
     Returns a list of parameter info dicts with keys:
     - name: parameter name
+    - display_name: full placeholder representation
     - style: parameter style detected
-    - position: position in query (for ordered params)
+    - positions: character positions in query
     - occurrences: number of occurrences in query
+    - is_positional: boolean
     """
-    params = []
-    seen = {}  # Track seen parameter names/positions
-
-    # Find all parameter occurrences with their positions
     all_matches = []
 
-    for match in PG_PATTERN.finditer(query):
-        all_matches.append({
-            'name': f'${match.group(1)}',
-            'raw_name': match.group(1),
-            'style': 'postgresql',
-            'position': int(match.group(1)),
-            'start': match.start(),
-            'end': match.end()
-        })
-
-    for match in NAMED_PATTERN.finditer(query):
-        all_matches.append({
-            'name': f':{match.group(1)}',
-            'raw_name': match.group(1),
-            'style': 'named',
-            'position': None,
-            'start': match.start(),
-            'end': match.end()
-        })
-
-    for match in AT_PATTERN.finditer(query):
-        all_matches.append({
-            'name': f'@{match.group(1)}',
-            'raw_name': match.group(1),
-            'style': 'at',
-            'position': None,
-            'start': match.start(),
-            'end': match.end()
-        })
-
-    for match in PYFORMAT_PATTERN.finditer(query):
-        all_matches.append({
-            'name': f'%({match.group(1)})s',
-            'raw_name': match.group(1),
-            'style': 'pyformat',
-            'position': None,
-            'start': match.start(),
-            'end': match.end()
-        })
-
-    for match in NUMBERED_QMARK.finditer(query):
-        all_matches.append({
-            'name': f'?{match.group(1)}',
-            'raw_name': match.group(1),
-            'style': 'numbered_qmark',
-            'position': int(match.group(1)),
-            'start': match.start(),
-            'end': match.end()
-        })
-
-    for match in SIMPLE_QMARK.finditer(query):
-        all_matches.append({
-            'name': '?',
-            'raw_name': None,
-            'style': 'qmark',
-            'position': None,
-            'start': match.start(),
-            'end': match.end()
-        })
-
-    # Sort by position in query
-    all_matches.sort(key=lambda x: x['start'])
+    for match in SQL_TOKEN_PATTERN.finditer(query):
+        if match.group('pg'):
+            all_matches.append({
+                'name': f"${match.group(2)}",
+                'raw_name': match.group(2),
+                'style': 'postgresql',
+                'start': match.start('pg'),
+                'end': match.end('pg')
+            })
+        elif match.group('pyformat'):
+            raw = match.group('pyformat').strip('%()s')
+            all_matches.append({
+                'name': match.group('pyformat'),
+                'raw_name': raw,
+                'style': 'pyformat',
+                'start': match.start('pyformat'),
+                'end': match.end('pyformat')
+            })
+        elif match.group('named'):
+            raw = match.group('named')[1:]
+            all_matches.append({
+                'name': match.group('named'),
+                'raw_name': raw,
+                'style': 'named',
+                'start': match.start('named'),
+                'end': match.end('named')
+            })
+        elif match.group('at'):
+            raw = match.group('at')[1:]
+            all_matches.append({
+                'name': match.group('at'),
+                'raw_name': raw,
+                'style': 'at',
+                'start': match.start('at'),
+                'end': match.end('at')
+            })
+        elif match.group('num_qmark'):
+            raw = match.group('num_qmark')[1:]
+            all_matches.append({
+                'name': match.group('num_qmark'),
+                'raw_name': raw,
+                'style': 'numbered_qmark',
+                'start': match.start('num_qmark'),
+                'end': match.end('num_qmark')
+            })
+        elif match.group('qmark'):
+            all_matches.append({
+                'name': '?',
+                'raw_name': None,
+                'style': 'qmark',
+                'start': match.start('qmark'),
+                'end': match.end('qmark')
+            })
 
     # Group by parameter identity and deduplicate
     param_groups = {}
@@ -197,7 +186,7 @@ def parse_query_parameters(query: str) -> List[Dict[str, Any]]:
         param_groups[key]['positions'].append(match['start'])
         param_groups[key]['occurrences'] += 1
 
-    # Convert to list, sorted by first occurrence
+    params = []
     for key, info in param_groups.items():
         params.append({
             'name': info['name'],
@@ -217,132 +206,63 @@ def parse_query_parameters(query: str) -> List[Dict[str, Any]]:
     return params
 
 
-def substitute_parameters(query: str, params: Dict[str, Any], db_type: str) -> Tuple[str, List[Any]]:
+def substitute_parameters(query: str, params: Union[Dict[str, Any], List[Any]], db_type: str) -> Tuple[str, List[Any]]:
     """
     Substitute named/positional parameters in a query with database-specific placeholders.
 
     Returns a tuple of (modified_query, parameter_values_list) where parameter_values_list
     is ordered correctly for the database driver.
-
-    Supported input parameter formats:
-    - Dict with parameter names as keys (for named params)
-    - List for positional parameters
-
-    Database-specific output:
-    - PostgreSQL: $1, $2, ...
-    - MySQL/SQLite: ?
-    - SQL Server: ? (pyodbc uses ?) or @name
-    - Firebird: ?
     """
     param_style = _detect_parameter_style(db_type)
-    param_values = []
-    param_map = {}  # Maps param name to index in param_values
+    placeholder = "%s" if param_style == "format" else "?"
+    param_values: List[Any] = []
 
     # Normalize input params to dict
     if isinstance(params, list):
-        # Convert positional list to dict with numeric keys
-        params = {str(i + 1): v for i, v in enumerate(params)}
-    elif not isinstance(params, dict):
-        params = {}
+        param_dict = {str(i + 1): v for i, v in enumerate(params)}
+    elif isinstance(params, dict):
+        param_dict = params
+    else:
+        param_dict = {}
 
-    # Build a single combined pattern that matches all parameter types
-    # Order matters: more specific patterns first
-    combined_pattern = re.compile(
-        r'\$(\d+)'                    # $1, $2 - PostgreSQL positional
-        r'|%\(([a-zA-Z_][a-zA-Z0-9_]*)\)s'  # %(name)s - Python format
-        r'|:([a-zA-Z_][a-zA-Z0-9_]*)'      # :name - named params
-        r'|@([a-zA-Z_][a-zA-Z0-9_]*)'      # @name - SQL Server
-        r'|\?(\d+)'                   # ?1, ?2 - numbered question marks
-        r'|\?'                        # ? - simple positional
-    )
+    pos_counter = 0
 
-    def replace_match(match):
-        # match groups: 1=$num, 2=%(name)s, 3=:name, 4=@name, 5=?num, 6=?
-        if match.group(1) is not None:
-            # PostgreSQL $1, $2
-            num = match.group(1)
-            key = str(num)
-            if key not in param_map:
-                param_map[key] = len(param_values)
-                param_values.append(params.get(key))
-            idx = param_map[key] + 1
-            if param_style == 'postgresql':
-                return f'${idx}'
-            elif param_style == 'qmark':
-                return '?'
-            else:
-                return f'%({key})s'
-        elif match.group(2) is not None:
-            # Python format %(name)s
-            name = match.group(2)
-            if name not in param_map:
-                param_map[name] = len(param_values)
-                param_values.append(params.get(name))
-            idx = param_map[name] + 1
-            if param_style == 'postgresql':
-                return f'${idx}'
-            elif param_style == 'qmark':
-                return '?'
-            else:
-                return f'%({name})s'
-        elif match.group(3) is not None:
-            # Named :name
-            name = match.group(3)
-            if name not in param_map:
-                param_map[name] = len(param_values)
-                param_values.append(params.get(name))
-            else:
-                # For qmark style, we need to add the value again for each occurrence
-                if param_style == 'qmark':
-                    param_values.append(params.get(name))
-            idx = param_map[name] + 1
-            if param_style == 'postgresql':
-                return f'${idx}'
-            elif param_style == 'qmark':
-                return '?'
-            else:
-                return f'%({name})s'
-        elif match.group(4) is not None:
-            # SQL Server @name
-            name = match.group(4)
-            if name not in param_map:
-                param_map[name] = len(param_values)
-                param_values.append(params.get(name))
-            else:
-                # For qmark style, add value again for each occurrence
-                if param_style == 'qmark':
-                    param_values.append(params.get(name))
-            idx = param_map[name] + 1
-            if param_style == 'pyformat':
-                return f'@p{idx}'
-            elif param_style == 'qmark':
-                return '?'
-            else:
-                return f'@p{idx}'
-        elif match.group(5) is not None:
-            # Numbered ?1, ?2
-            num = match.group(5)
-            if num not in param_map:
-                param_map[num] = len(param_values)
-                param_values.append(params.get(num))
-            idx = param_map[num] + 1
-            if param_style == 'postgresql':
-                return f'${idx}'
-            else:
-                return '?'
-        else:
-            # Simple ?
-            seq_key = f'_pos_{len(param_values)}'
-            if seq_key not in param_map:
-                param_map[seq_key] = len(param_values)
-                pos_key = str(len(param_values) + 1)
-                param_values.append(params.get(pos_key))
-            if param_style == 'postgresql':
-                return f'${len(param_values)}'
-            return '?'
+    def replace_match(match: re.Match) -> str:
+        nonlocal pos_counter
+        if match.group('pg'):
+            num = match.group('pg')[1:]
+            val = param_dict.get(num, param_dict.get('$' + num, param_dict.get(int(num) if num.isdigit() else None)))
+            param_values.append(val)
+            return placeholder
+        if match.group('pyformat'):
+            raw = match.group('pyformat').strip('%()s')
+            val = param_dict.get(raw)
+            param_values.append(val)
+            return placeholder
+        if match.group('named'):
+            raw = match.group('named')[1:]
+            val = param_dict.get(raw, param_dict.get(':' + raw))
+            param_values.append(val)
+            return placeholder
+        if match.group('at'):
+            raw = match.group('at')[1:]
+            val = param_dict.get(raw, param_dict.get('@' + raw))
+            param_values.append(val)
+            return placeholder
+        if match.group('num_qmark'):
+            num = match.group('num_qmark')[1:]
+            val = param_dict.get(num, param_dict.get('?' + num, param_dict.get(int(num) if num.isdigit() else None)))
+            param_values.append(val)
+            return placeholder
+        if match.group('qmark'):
+            pos_counter += 1
+            val = param_dict.get(str(pos_counter), param_dict.get(pos_counter))
+            param_values.append(val)
+            return placeholder
+        return match.group(0)
 
     # Single pass substitution
-    query = combined_pattern.sub(replace_match, query)
+    query = SQL_TOKEN_PATTERN.sub(replace_match, query)
 
     return query, param_values
 
@@ -1200,9 +1120,7 @@ def validate_query(query: str, role: str = "viewer", db_type: Any = None, connec
 
     # Skip EXPLAIN validation for queries that appear to have parameter placeholders
     # as they would fail without bound parameters
-    has_params = bool(PG_PATTERN.search(query) or NAMED_PATTERN.search(query) or
-                      AT_PATTERN.search(query) or PYFORMAT_PATTERN.search(query) or
-                      NUMBERED_QMARK.search(query) or SIMPLE_QMARK.search(query))
+    has_params = bool(parse_query_parameters(query))
 
     if first == "SELECT" and db_type is not None and _db_name(db_type) == DatabaseType.SQLITE.value and not has_params:
         conn = None

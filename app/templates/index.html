@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=v1.1.0">
+    <link rel="stylesheet" href="/static/css/style.css?v=v1.1.1">
 
     <!-- CodeMirror 6 Styles (loaded via JS modules) -->
     <style>
@@ -29,12 +29,12 @@
         .editor-container { min-height: 200px; }
     </style>
 
-    <script defer src="/static/js/app.js?v=v1.1.0"></script>
-    <script defer src="/static/js/editor-highlighting.js?v=v1.1.0"></script>
-    <script defer src="/static/js/sql-formatter.js?v=v1.1.0"></script>
-    <script defer src="/static/js/snippets.js?v=v1.1.0"></script>
-    <script defer src="/static/js/inline-editing.js?v=v1.1.0"></script>
-    <script defer src="/static/js/autocomplete.js?v=v1.1.0"></script>
+    <script defer src="/static/js/app.js?v=v1.1.1"></script>
+    <script defer src="/static/js/editor-highlighting.js?v=v1.1.1"></script>
+    <script defer src="/static/js/sql-formatter.js?v=v1.1.1"></script>
+    <script defer src="/static/js/snippets.js?v=v1.1.1"></script>
+    <script defer src="/static/js/inline-editing.js?v=v1.1.1"></script>
+    <script defer src="/static/js/autocomplete.js?v=v1.1.1"></script>
 </head>
 <body class="dark-theme">
     <div class="app-container">
@@ -65,7 +65,7 @@
                 </div>
                 <div class="logo-text">
                     <h1>Query Execute</h1>
-                    <span class="app-version-pill" id="app-version-pill">v1.1.0</span>
+                    <span class="app-version-pill" id="app-version-pill">v1.1.1</span>
                 </div>
             </div>
             <div class="header-controls">
@@ -196,7 +196,7 @@
                         </section>
                         <section class="settings-tab-panel hidden" id="updates-settings">
                             <h3>Application updates</h3>
-                            <p>Installed version: <strong id="current-app-version">v1.1.0</strong></p>
+                            <p>Installed version: <strong id="current-app-version">v1.1.1</strong></p>
                             <p id="update-status" role="status">Checking for updates…</p>
                             <div class="update-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
                                 <a id="btn-apply-update" class="btn btn-accent hidden" href="#" target="_blank" rel="noopener noreferrer">Open release page</a>
@@ -382,6 +382,7 @@
                         </div>
                         <div class="snippets-form-container hidden" id="snippet-form-container">
                             <form id="snippet-form" class="snippet-form">
+                                <h3 id="snippet-form-title" class="form-title">New Snippet</h3>
                                 <input type="hidden" id="snippet-form-id">
                                 <div class="form-group">
                                     <label for="snippet-name">Name</label>

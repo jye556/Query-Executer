@@ -96,11 +96,11 @@ async function createEditor(tabId, container, initialQuery = "", options = {}) {
             // Update tab query on change
             EditorView.updateListener.of((update) => {
                 if (update.docChanged) {
-                    const tab = getTabById(tabId);
+                    const tab = getEditorTab(tabId);
                     if (tab) {
                         tab.query = update.state.doc.toString();
                         tab.isDirty = true;
-                        updateTabName(tab);
+                        updateEditorTabName(tab);
                         // Debounce syntax check
                         debounceQueryCheck(tab);
                     }
@@ -110,12 +110,15 @@ async function createEditor(tabId, container, initialQuery = "", options = {}) {
             // Selection change for suggestions
             EditorView.updateListener.of((update) => {
                 if (update.selectionSet) {
-                    const tab = getTabById(tabId);
+                    const tab = getEditorTab(tabId);
                     if (tab) {
-                        updateQuerySuggestionsForTab(tab);
+                        updateEditorQuerySuggestions(tab);
                     }
                 }
-            })
+            }),
+
+            // Additional custom extensions
+            ...(Array.isArray(config.extensions) ? config.extensions : [])
         ]
     });
 
@@ -141,7 +144,7 @@ async function createEditor(tabId, container, initialQuery = "", options = {}) {
     editorInstances.set(tabId, editorInstance);
 
     // Store reference on tab
-    const tab = getTabById(tabId);
+    const tab = getEditorTab(tabId);
     if (tab) {
         tab.editorView = view;
         tab.editorInstance = editorInstance;
@@ -297,7 +300,7 @@ function recreateEditorWithConfig(tabId) {
     const instance = editorInstances.get(tabId);
     if (!instance) return;
 
-    const tab = getTabById(tabId);
+    const tab = getEditorTab(tabId);
     const container = instance.view.dom.parentElement;
     const value = instance.getValue();
 
@@ -318,7 +321,7 @@ function debounceQueryCheck(tab) {
     if (existing) clearTimeout(existing);
 
     queryCheckTimeouts.set(tab.id, setTimeout(() => {
-        updateQueryCheckForTab(tab);
+        updateEditorQueryCheck(tab);
         queryCheckTimeouts.delete(tab.id);
     }, 500));
 }
@@ -327,7 +330,7 @@ function debounceQueryCheck(tab) {
  * Execute query from editor (called by keymap)
  */
 function executeQueryFromEditor(tabId) {
-    const tab = getTabById(tabId);
+    const tab = getEditorTab(tabId);
     if (tab && window.executeQuery) {
         window.executeQuery(tab.id);
     }
@@ -336,9 +339,12 @@ function executeQueryFromEditor(tabId) {
 /**
  * Get tab by ID (uses global queryTabs from app.js)
  */
-function getTabById(tabId) {
-    if (window.queryTabs) {
-        return window.queryTabs.find(t => t.id === tabId);
+function getEditorTab(tabId) {
+    if (typeof window !== "undefined" && typeof window.getTabById === "function") {
+        return window.getTabById(tabId);
+    }
+    if (typeof window !== "undefined" && window.queryTabs) {
+        return window.queryTabs.find(t => t && t.id === tabId);
     }
     return null;
 }
@@ -346,8 +352,8 @@ function getTabById(tabId) {
 /**
  * Update tab name (uses global function from app.js)
  */
-function updateTabName(tab) {
-    if (window.updateTabName) {
+function updateEditorTabName(tab) {
+    if (typeof window !== "undefined" && typeof window.updateTabName === "function") {
         window.updateTabName(tab);
     }
 }
@@ -355,8 +361,8 @@ function updateTabName(tab) {
 /**
  * Update query check for tab (uses global function from app.js)
  */
-function updateQueryCheckForTab(tab) {
-    if (window.updateQueryCheckForTab && window.updateQueryCheckForTab !== updateQueryCheckForTab) {
+function updateEditorQueryCheck(tab) {
+    if (typeof window !== "undefined" && typeof window.updateQueryCheckForTab === "function") {
         window.updateQueryCheckForTab(tab);
     }
 }
@@ -364,11 +370,12 @@ function updateQueryCheckForTab(tab) {
 /**
  * Update query suggestions for tab (uses global function from app.js)
  */
-function updateQuerySuggestionsForTab(tab) {
-    if (window.updateQuerySuggestionsForTab && window.updateQuerySuggestionsForTab !== updateQuerySuggestionsForTab) {
+function updateEditorQuerySuggestions(tab) {
+    if (typeof window !== "undefined" && typeof window.updateQuerySuggestionsForTab === "function") {
         window.updateQuerySuggestionsForTab(tab);
     }
 }
+
 
 /**
  * Load CodeMirror 6 modules from CDN
@@ -401,24 +408,22 @@ async function loadCodeMirrorModules() {
             return;
         }
 
-        // Load from CDN using ES modules with specific versions
-        const version = "6.26.0"; // Specific version that exists on CDN
-
+        // Load from CDN using ES modules
         try {
-            const modules = await import(`https://cdn.jsdelivr.net/npm/@codemirror/view@${version}/+esm`);
+            const modules = await import("https://cdn.jsdelivr.net/npm/@codemirror/view@6/+esm");
             window.EditorView = modules.EditorView;
             window.keymap = modules.keymap;
             window.lineNumbers = modules.lineNumbers;
             window.bracketMatching = modules.bracketMatching;
             window.placeholder = modules.placeholder;
-            window.EditorView_theme = modules.theme; // alias
+            window.EditorView_theme = modules.theme;
         } catch (e) {
             console.error("Failed to load @codemirror/view:", e);
             throw e;
         }
 
         try {
-            const stateModule = await import(`https://cdn.jsdelivr.net/npm/@codemirror/state@${version}/+esm`);
+            const stateModule = await import("https://cdn.jsdelivr.net/npm/@codemirror/state@6/+esm");
             window.EditorState = stateModule.EditorState;
         } catch (e) {
             console.error("Failed to load @codemirror/state:", e);
@@ -426,17 +431,32 @@ async function loadCodeMirrorModules() {
         }
 
         try {
-            const basicSetupModule = await import(`https://cdn.jsdelivr.net/npm/@codemirror/basic-setup@${version}/+esm`);
-            window.basicSetup = basicSetupModule.basicSetup;
-            window.closeBrackets = basicSetupModule.closeBrackets;
-            window.indentWithTab = basicSetupModule.indentWithTab;
+            const cmModule = await import("https://cdn.jsdelivr.net/npm/codemirror@6/+esm");
+            window.basicSetup = cmModule.basicSetup;
         } catch (e) {
-            console.error("Failed to load @codemirror/basic-setup:", e);
-            throw e;
+            console.warn("Failed to load codemirror basicSetup:", e);
+            window.basicSetup = [];
         }
 
         try {
-            const langSqlModule = await import(`https://cdn.jsdelivr.net/npm/@codemirror/lang-sql@${version}/+esm`);
+            const langModule = await import("https://cdn.jsdelivr.net/npm/@codemirror/language@6/+esm");
+            window.indentWithTab = langModule.indentWithTab;
+            if (langModule.bracketMatching) window.bracketMatching = langModule.bracketMatching;
+        } catch (e) {
+            console.warn("Optional @codemirror/language not loaded:", e);
+            window.indentWithTab = [];
+        }
+
+        try {
+            const acModule = await import("https://cdn.jsdelivr.net/npm/@codemirror/autocomplete@6/+esm");
+            window.closeBrackets = acModule.closeBrackets;
+        } catch (e) {
+            console.warn("Optional @codemirror/autocomplete not loaded:", e);
+            window.closeBrackets = () => [];
+        }
+
+        try {
+            const langSqlModule = await import("https://cdn.jsdelivr.net/npm/@codemirror/lang-sql@6/+esm");
             window.sql = langSqlModule.sql;
         } catch (e) {
             console.error("Failed to load @codemirror/lang-sql:", e);
@@ -444,20 +464,14 @@ async function loadCodeMirrorModules() {
         }
 
         try {
-            const themeOneDarkModule = await import(`https://cdn.jsdelivr.net/npm/@codemirror/theme-one-dark@${version}/+esm`);
+            const themeOneDarkModule = await import("https://cdn.jsdelivr.net/npm/@codemirror/theme-one-dark@6/+esm");
             window.oneDark = themeOneDarkModule.oneDark;
         } catch (e) {
-            console.error("Failed to load @codemirror/theme-one-dark:", e);
-            throw e;
+            console.warn("Optional @codemirror/theme-one-dark not loaded:", e);
+            window.oneDark = [];
         }
 
-        try {
-            const themeOneLightModule = await import(`https://cdn.jsdelivr.net/npm/@codemirror/theme-one-light@${version}/+esm`);
-            window.oneLight = themeOneLightModule.oneLight;
-        } catch (e) {
-            console.error("Failed to load @codemirror/theme-one-light:", e);
-            throw e;
-        }
+        window.oneLight = [];
 
         codeMirrorLoaded = true;
     })();

@@ -10,6 +10,34 @@
  * - Validation feedback
  */
 
+function getTab(tabId) {
+    if (typeof window !== "undefined" && typeof window.getTabById === "function") {
+        return window.getTabById(tabId);
+    }
+    if (typeof getTabById === "function") {
+        return getTabById(tabId);
+    }
+    return (window.queryTabs || []).find(t => t.id === tabId);
+}
+
+function getCurrentTab() {
+    if (typeof window !== "undefined" && typeof window.getActiveTab === "function") {
+        return window.getActiveTab();
+    }
+    if (typeof getActiveTab === "function") {
+        return getActiveTab();
+    }
+    return (window.queryTabs || [])[0] || null;
+}
+
+function toast(message, type = "info") {
+    if (typeof window !== "undefined" && typeof window.showToast === "function") {
+        window.showToast(message, type);
+    } else if (typeof showToast === "function") {
+        showToast(message, type);
+    }
+}
+
 // State
 let editMode = false;
 let pendingEdits = new Map();
@@ -19,7 +47,7 @@ let cellHistory = new Map(); // For undo/redo per cell
  * Toggle edit mode for result grid
  */
 function toggleEditMode(tabId) {
-    const tab = getTabById(tabId);
+    const tab = getTab(tabId);
     if (!tab || !tab.resultsContainer) return false;
 
     const isEditMode = tab.resultsContainer.classList.toggle("edit-mode");
@@ -37,7 +65,7 @@ function toggleEditMode(tabId) {
             btnEditMode.classList.remove("btn-secondary");
             btnEditMode.title = "Exit edit mode";
         }
-        showToast("Edit mode enabled - click cells to edit", "info");
+        toast("Edit mode enabled - click cells to edit", "info");
     } else {
         // Disable edit mode
         disableEditMode(container);
@@ -47,7 +75,7 @@ function toggleEditMode(tabId) {
             btnEditMode.classList.remove("btn-primary");
             btnEditMode.title = "Enter edit mode";
         }
-        showToast("Edit mode disabled", "info");
+        toast("Edit mode disabled", "info");
     }
 
     return isEditMode;
@@ -151,7 +179,10 @@ function showEditToolbar(tab) {
     document.getElementById(`btn-undo-${tab.id}`)?.addEventListener("click", () => undoCellEdit(tab.id));
     document.getElementById(`btn-redo-${tab.id}`)?.addEventListener("click", () => redoCellEdit(tab.id));
     document.getElementById(`btn-validate-${tab.id}`)?.addEventListener("click", () => validateAllCells(tab.id));
-    document.getElementById(`btn-apply-edits-toolbar-${tab.id}`)?.addEventListener("click", () => applyResultEdits(tab.id));
+    document.getElementById(`btn-apply-edits-toolbar-${tab.id}`)?.addEventListener("click", () => {
+        const applyFn = window.applyResultEdits || (typeof applyResultEdits === "function" ? applyResultEdits : null);
+        if (applyFn) applyFn(tab.id);
+    });
 }
 
 function hideEditToolbar() {
@@ -172,20 +203,21 @@ function onCellFocus(event) {
  */
 function onCellBlur(event) {
     const cell = event.target;
+    if (cell.classList.contains("row-index")) return;
     cell.classList.remove("editing");
 
     const newValue = cell.textContent;
     const originalValue = cell.dataset.originalValue;
-    const column = cell.cellIndex;
+    const column = cell.dataset.columnIndex !== undefined ? parseInt(cell.dataset.columnIndex, 10) : cell.cellIndex;
     const row = cell.closest("tr");
-    const rowIndex = row ? row.rowIndex - 1 : 0;
+    const rowIndex = cell.dataset.rowIndex !== undefined ? parseInt(cell.dataset.rowIndex, 10) : (row ? row.rowIndex - 1 : 0);
     const keyCell = row?.querySelector("[data-key]");
     const keyValue = keyCell?.dataset.key;
-    const columnName = cell.closest("table")?.querySelectorAll("th")[cell.cellIndex]?.textContent;
+    const columnName = cell.dataset.column || cell.closest("table")?.querySelectorAll("th")[cell.cellIndex]?.textContent;
 
     if (newValue !== originalValue && originalValue !== undefined) {
         // Save to pending edits
-        const tab = getActiveTab();
+        const tab = getCurrentTab();
         if (!tab) return;
 
         const editKey = `${tab.id}:${rowIndex}:${column}`;
@@ -202,6 +234,17 @@ function onCellBlur(event) {
         };
 
         pendingEdits.set(editKey, edit);
+        if (tab.pendingEdits) {
+            tab.pendingEdits.set(editKey, {
+                key_value: keyValue,
+                keyValue,
+                column: columnName || column,
+                columnName: columnName || column,
+                value: newValue,
+                newValue,
+                originalValue
+            });
+        }
 
         // Record in history for undo/redo
         if (!cellHistory.has(tab.id)) cellHistory.set(tab.id, { past: [], future: [] });
@@ -297,9 +340,9 @@ function onCellKeyDown(event) {
             if (event.ctrlKey || event.metaKey) {
                 event.preventDefault();
                 if (event.shiftKey) {
-                    redoCellEdit(getActiveTab()?.id);
+                    redoCellEdit(getCurrentTab()?.id);
                 } else {
-                    undoCellEdit(getActiveTab()?.id);
+                    undoCellEdit(getCurrentTab()?.id);
                 }
             }
             break;
@@ -307,7 +350,7 @@ function onCellKeyDown(event) {
         case "y":
             if (event.ctrlKey || event.metaKey) {
                 event.preventDefault();
-                redoCellEdit(getActiveTab()?.id);
+                redoCellEdit(getCurrentTab()?.id);
             }
             break;
     }
@@ -372,12 +415,16 @@ function undoCellEdit(tabId) {
     // Remove from pending edits
     const editKey = `${tabId}:${lastEdit.rowIndex}:${lastEdit.column}`;
     pendingEdits.delete(editKey);
+    const tab = getTab(tabId);
+    if (tab?.pendingEdits) {
+        tab.pendingEdits.delete(editKey);
+    }
 
     // Move to future for redo
     history.future.push(lastEdit);
 
-    updatePendingEditsUI(getTabById(tabId));
-    showToast("Undo successful", "info");
+    updatePendingEditsUI(tab);
+    toast("Undo successful", "info");
 }
 
 /**
@@ -396,19 +443,31 @@ function redoCellEdit(tabId) {
     // Re-add to pending edits
     const editKey = `${tabId}:${nextEdit.rowIndex}:${nextEdit.column}`;
     pendingEdits.set(editKey, nextEdit);
+    const tab = getTab(tabId);
+    if (tab?.pendingEdits) {
+        tab.pendingEdits.set(editKey, {
+            key_value: nextEdit.keyValue,
+            keyValue: nextEdit.keyValue,
+            column: nextEdit.columnName || nextEdit.column,
+            columnName: nextEdit.columnName || nextEdit.column,
+            value: nextEdit.newValue,
+            newValue: nextEdit.newValue,
+            originalValue: nextEdit.originalValue
+        });
+    }
 
     // Move to past
     history.past.push(nextEdit);
 
-    updatePendingEditsUI(getTabById(tabId));
-    showToast("Redo successful", "info");
+    updatePendingEditsUI(tab);
+    toast("Redo successful", "info");
 }
 
 /**
  * Validate all cells in edit mode
  */
 function validateAllCells(tabId) {
-    const tab = getTabById(tabId);
+    const tab = getTab(tabId);
     if (!tab || !tab.resultsContainer) return;
 
     const cells = tab.resultsContainer.querySelectorAll("td[contenteditable='true']");
@@ -426,9 +485,9 @@ function validateAllCells(tabId) {
     });
 
     if (invalidCount > 0) {
-        showToast(`${invalidCount} invalid cell(s) found`, "warning");
+        toast(`${invalidCount} invalid cell(s) found`, "warning");
     } else {
-        showToast("All cells valid", "success");
+        toast("All cells valid", "success");
     }
 }
 

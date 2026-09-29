@@ -1,6 +1,18 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "releases": [
+    {
+      "version": "1.1.1",
+      "date": "2026-09-29",
+      "notes": [
+        "Query Results table alignment: tabular numeric alignment, centered booleans, and null badges.",
+        "Sticky table header with solid background preventing bleed-through when scrolling.",
+        "Sticky row index (#) column pinned to the left with independent horizontal and vertical scrolling.",
+        "Multi-database query execution layout with status indicators, row count badges, and execution time.",
+        "Fixed editor tab rendering, syntax highlighting initialization, and connection loading.",
+        "Responsive results scroll container fixing overflow clipping."
+      ]
+    },
     {
       "version": "1.1.0",
       "date": "2026-09-27",

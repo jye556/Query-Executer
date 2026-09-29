@@ -72,7 +72,7 @@ class RequestedEnhancementTests(unittest.TestCase):
         self.assertIn("place-items: center", css)
         self.assertIn("bash install_linux.sh", readme)
         self.assertIn("install_windows.ps1", readme)
-        self.assertIn("v1.0.4", readme)
+        self.assertIn("v1.1.1", readme)
         self.assertIn("BOOTSTRAP_ADMIN_USERNAME=admin", installer)
         self.assertNotIn("admin/admin", installer)
         self.assertIn("UPDATE_CHECK_URL", readme)
@@ -89,16 +89,16 @@ class RequestedEnhancementTests(unittest.TestCase):
             from unittest.mock import MagicMock
             response = MagicMock()
             response.__enter__.return_value.read.return_value = json.dumps({
-                "tag_name": "v1.0.8",
-                "name": "Query Execute 1.0.8",
-                "html_url": "https://github.com/example/project/releases/tag/v1.0.8",
+                "tag_name": "v1.1.1",
+                "name": "Query Execute 1.1.1",
+                "html_url": "https://github.com/example/project/releases/tag/v1.1.1",
             }).encode()
             mock_urlopen.return_value = response
             
             response = client.get("/api/version")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["version"], "1.0.8")
-        self.assertEqual(response.json()["latest_version"], "v1.0.8")
+        self.assertEqual(response.json()["version"], "1.1.1")
+        self.assertEqual(response.json()["latest_version"], "v1.1.1")
         self.assertTrue(response.json()["changelog"])
         self.assertIsInstance(response.json()["update_available"], bool)
 
@@ -109,16 +109,16 @@ class RequestedEnhancementTests(unittest.TestCase):
         from app.main import get_version
         response = MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
-            "tag_name": "v1.0.9",
-            "name": "Query Execute 1.0.9",
-            "html_url": "https://github.com/example/project/releases/tag/v1.0.9",
+            "tag_name": "v1.2.0",
+            "name": "Query Execute 1.2.0",
+            "html_url": "https://github.com/example/project/releases/tag/v1.2.0",
         }).encode()
         with patch.dict(os.environ, {"UPDATE_CHECK_URL": "https://api.github.test/releases/latest"}), \
              patch("app.main.urlopen", return_value=response):
             result = asyncio.run(get_version())
-        self.assertEqual(result["latest_version"], "v1.0.9")
+        self.assertEqual(result["latest_version"], "v1.2.0")
         self.assertTrue(result["update_available"])
-        self.assertEqual(result["release_url"], "https://github.com/example/project/releases/tag/v1.0.9")
+        self.assertEqual(result["release_url"], "https://github.com/example/project/releases/tag/v1.2.0")
 
     def test_totp_setup_endpoint_returns_qr_code_for_authenticator_uri(self):
         import asyncio
@@ -235,7 +235,8 @@ class RequestedEnhancementTests(unittest.TestCase):
             self.assertTrue(execute_query("INSERT INTO demo VALUES (1, 'before')", db_type="sqlite", database=database)["success"])
             metadata = get_schema_metadata(db_type="sqlite", database=database)
             self.assertEqual(metadata["tables"][0]["name"], "demo")
-            self.assertEqual(metadata["tables"][0]["columns"], ["id", "name"])
+            columns = [c["name"] if isinstance(c, dict) else c for c in metadata["tables"][0]["columns"]]
+            self.assertEqual(columns, ["id", "name"])
 
             result = execute_query("SELECT id, name FROM demo WHERE id = 1", db_type="sqlite", database=database)
             self.assertTrue(result["edit_context"]["editable"])

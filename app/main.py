@@ -85,7 +85,7 @@ USE_POSTGRES = bool(DATABASE_URL)
 app = FastAPI(
     title="Query Execute",
     description="A secure, multi-database SQL query workspace.",
-    version="1.1.0",
+    version="1.1.1",
 )
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -2169,13 +2169,11 @@ async def list_snippets(user: Dict[str, Any] = Depends(current_user)):
             cur.execute("SELECT * FROM snippets ORDER BY name")
         else:
             cur.execute(
-                """SELECT s.* FROM snippets s
-                   LEFT JOIN user_groups ug ON ug.user_id = s.user_id
-                   WHERE s.user_id = %s OR s.is_shared = 1 OR ug.user_id IS NOT NULL
+                """SELECT DISTINCT s.* FROM snippets s
+                   WHERE s.user_id = %s OR s.is_shared = TRUE
                    ORDER BY s.name""" if USE_POSTGRES else
-                """SELECT s.* FROM snippets s
-                   LEFT JOIN user_groups ug ON ug.user_id = s.user_id
-                   WHERE s.user_id = ? OR s.is_shared = 1 OR ug.user_id IS NOT NULL
+                """SELECT DISTINCT s.* FROM snippets s
+                   WHERE s.user_id = ? OR s.is_shared = 1
                    ORDER BY s.name""",
                 (user["id"],),
             )
