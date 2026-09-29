@@ -4347,3 +4347,154 @@ async function loadDBMonitor() {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--error);">${escapeHtml(e.message)}</td></tr>`;
     }
 }
+
+
+// ── Global Command Palette ──
+let cmdPaletteCommands = [];
+let cmdPaletteSelectedIndex = -1;
+
+function initCommandPalette() {
+    const modal = document.getElementById("command-palette-modal");
+    const input = document.getElementById("cmd-palette-input");
+    const resultsUl = document.getElementById("cmd-palette-results");
+
+    document.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+            e.preventDefault();
+            buildCmdPaletteData();
+            input.value = "";
+            renderCmdPaletteResults("");
+            modal.showModal();
+            input.focus();
+        }
+    });
+
+    modal.addEventListener("click", (e) => {
+        if (e.target === modal) modal.close();
+    });
+
+    input.addEventListener("input", (e) => {
+        renderCmdPaletteResults(e.target.value);
+    });
+
+    input.addEventListener("keydown", (e) => {
+        const items = resultsUl.querySelectorAll("li");
+        if (items.length === 0) return;
+
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            cmdPaletteSelectedIndex = (cmdPaletteSelectedIndex + 1) % items.length;
+            updateCmdPaletteSelection(items);
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            cmdPaletteSelectedIndex = (cmdPaletteSelectedIndex - 1 + items.length) % items.length;
+            updateCmdPaletteSelection(items);
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (cmdPaletteSelectedIndex >= 0 && cmdPaletteSelectedIndex < items.length) {
+                items[cmdPaletteSelectedIndex].click();
+            }
+        }
+    });
+
+    async function buildCmdPaletteData() {
+        cmdPaletteCommands = [
+            { id: "view-query", type: "View", title: "Open Query Editor", action: () => switchView("query-section") },
+            { id: "view-connections", type: "View", title: "Open Connections", action: () => switchView("connections-section") },
+            { id: "view-settings", type: "View", title: "Open Settings", action: () => switchView("settings-section") },
+            { id: "view-history", type: "View", title: "Open History", action: () => switchView("history-section") },
+            { id: "view-saved", type: "View", title: "Open Saved Queries", action: () => switchView("saved-queries-section") },
+            { id: "view-dashboard", type: "View", title: "Open Dashboard", action: () => switchView("dashboard-section") },
+            { id: "action-theme", type: "Action", title: "Toggle Theme (Dark/Light)", action: () => document.getElementById("btn-toggle-theme")?.click() },
+            { id: "action-logout", type: "Action", title: "Log Out", action: () => document.getElementById("btn-logout")?.click() },
+            { id: "action-ai", type: "Action", title: "AI SQL Assistant", action: () => { switchView("query-section"); document.getElementById("btn-ai-assist")?.click(); } }
+        ];
+
+        // Add Connections
+        const conns = Array.from(document.querySelectorAll("#connections-list .connection-card"));
+        conns.forEach(c => {
+            const name = c.querySelector("h3")?.textContent || "Unknown";
+            const id = c.dataset.id || c.querySelector("button")?.dataset.id;
+            if (id) {
+                cmdPaletteCommands.push({
+                    id: `conn-${id}`,
+                    type: "Connection",
+                    title: `Connect to: ${name}`,
+                    action: () => { useConnection(id); modal.close(); }
+                });
+            }
+        });
+
+        // Add Saved Queries
+        try {
+            const response = await fetch("/api/saved-queries");
+            if (response.ok) {
+                const queries = await response.json();
+                queries.forEach(q => {
+                    cmdPaletteCommands.push({
+                        id: `sq-${q.id}`,
+                        type: "Saved Query",
+                        title: `Load: ${q.name}`,
+                        action: () => { 
+                            const tab = getActiveTab() || createQueryTab();
+                            tab.query = q.sql;
+                            tab.isDirty = true;
+                            if (q.connection_id) tab.connectionIds = new Set([q.connection_id]);
+                            updateTabName(tab);
+                            switchView("query-section");
+                            modal.close();
+                        }
+                    });
+                });
+            }
+        } catch(e) {}
+    }
+
+    function renderCmdPaletteResults(query) {
+        query = query.toLowerCase();
+        let filtered = cmdPaletteCommands;
+        if (query) {
+            filtered = cmdPaletteCommands.filter(c => c.title.toLowerCase().includes(query) || c.type.toLowerCase().includes(query));
+        }
+        
+        filtered = filtered.slice(0, 15); // limit results
+        resultsUl.innerHTML = "";
+        cmdPaletteSelectedIndex = filtered.length > 0 ? 0 : -1;
+
+        filtered.forEach((cmd, idx) => {
+            const li = document.createElement("li");
+            li.style = `padding: 0.75rem 1rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); ${idx === 0 ? "background: var(--surface-hover);" : ""}`;
+            li.innerHTML = `
+                <span style="font-weight: 500;">${escapeHtml(cmd.title)}</span>
+                <span style="font-size: 0.8rem; color: var(--text-muted); background: var(--surface); padding: 2px 6px; border-radius: 4px;">${escapeHtml(cmd.type)}</span>
+            `;
+            
+            li.addEventListener("mouseover", () => {
+                cmdPaletteSelectedIndex = idx;
+                updateCmdPaletteSelection(resultsUl.querySelectorAll("li"));
+            });
+            
+            li.addEventListener("click", () => {
+                cmd.action();
+                if (cmd.type !== "Connection" && cmd.type !== "Saved Query") modal.close();
+            });
+            
+            resultsUl.appendChild(li);
+        });
+    }
+
+    function updateCmdPaletteSelection(items) {
+        items.forEach((item, idx) => {
+            if (idx === cmdPaletteSelectedIndex) {
+                item.style.background = "var(--surface-hover)";
+                item.scrollIntoView({ block: "nearest" });
+            } else {
+                item.style.background = "transparent";
+            }
+        });
+    }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    initCommandPalette();
+});
