@@ -2,12 +2,11 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const CURRENT_VERSION = "1.1.1";
-
 const root = path.join(__dirname, "..");
 const template = fs.readFileSync(path.join(root, "app/templates/index.html"), "utf8");
 const script = fs.readFileSync(path.join(root, "app/static/js/app.js"), "utf8");
 const releases = JSON.parse(fs.readFileSync(path.join(root, "app/releases.json"), "utf8"));
+const CURRENT_VERSION = releases.version;
 
 const pageOne = template.match(/<section[^>]*id="totp-step-one"[^>]*>([\s\S]*?)<\/section>/)?.[1];
 const pageTwo = template.match(/<section[^>]*id="totp-step-two"[^>]*>([\s\S]*?)<\/section>/)?.[1];
@@ -54,7 +53,7 @@ assert.equal(new Set(releases.releases.map(release => release.version)).size, re
         escapeHtml: value => value,
         fetch: async url => ({
             ok: true,
-            async json() { return { version: "1.1.1", latest_version: "1.1.1", update_available: false, release_url: "https://example.test/release/v1.1.1", changelog: [] }; },
+            async json() { return { version: CURRENT_VERSION, latest_version: CURRENT_VERSION, update_available: false, release_url: `https://example.test/release/v${CURRENT_VERSION}`, changelog: [] }; },
         }),
     };
     const updateStart = script.indexOf("async function fetchVersionData()");
@@ -64,7 +63,7 @@ assert.equal(new Set(releases.releases.map(release => release.version)).size, re
     await require("node:vm").runInNewContext(`${script.slice(updateStart, updateEnd)}\ncheckForUpdates()`, context);
     assert.equal(elements.get("app-version-pill").textContent, `v${CURRENT_VERSION}`);
     assert.equal(elements.get("version-update-message").textContent, "");
-    assert.equal(elements.get("version-update-link").href, "https://example.test/release/v1.1.1");
+    assert.equal(elements.get("version-update-link").href, `https://example.test/release/v${CURRENT_VERSION}`);
     assert.ok(statements.some(([, action, , hidden]) => action === "toggle" && hidden === true));
     console.log("2FA pages, header update/version display, and availability flow verified");
 })().catch(error => { console.error(error); process.exitCode = 1; });

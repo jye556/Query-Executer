@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=v1.2.0">
+    <link rel="stylesheet" href="/static/css/style.css?v=v1.3.0">
 
     <!-- CodeMirror 6 Styles (loaded via JS modules) -->
     <style>
@@ -29,12 +29,12 @@
         .editor-container { min-height: 200px; }
     </style>
 
-    <script defer src="/static/js/app.js?v=v1.2.0"></script>
-    <script defer src="/static/js/editor-highlighting.js?v=v1.2.0"></script>
-    <script defer src="/static/js/sql-formatter.js?v=v1.2.0"></script>
-    <script defer src="/static/js/snippets.js?v=v1.2.0"></script>
-    <script defer src="/static/js/inline-editing.js?v=v1.2.0"></script>
-    <script defer src="/static/js/autocomplete.js?v=v1.2.0"></script>
+    <script defer src="/static/js/app.js?v=v1.3.0"></script>
+    <script defer src="/static/js/editor-highlighting.js?v=v1.3.0"></script>
+    <script defer src="/static/js/sql-formatter.js?v=v1.3.0"></script>
+    <script defer src="/static/js/snippets.js?v=v1.3.0"></script>
+    <script defer src="/static/js/inline-editing.js?v=v1.3.0"></script>
+    <script defer src="/static/js/autocomplete.js?v=v1.3.0"></script>
 </head>
 <body class="dark-theme">
     <div class="app-container">
@@ -65,7 +65,7 @@
                 </div>
                 <div class="logo-text">
                     <h1>Query Execute</h1>
-                    <span class="app-version-pill" id="app-version-pill">v1.2.0</span>
+                    <span class="app-version-pill" id="app-version-pill">v1.3.0</span>
                 </div>
             </div>
             <div class="header-controls">
@@ -123,6 +123,18 @@
                             <a href="#" class="sidebar-link" data-view="history-section">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                                 History
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="sidebar-link" data-view="saved-queries-section">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                Saved Queries
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="sidebar-link" data-view="schema-diff-section">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
+                                Schema Diff
                             </a>
                         </li>
                     </ul>
@@ -216,7 +228,7 @@
                         </section>
                         <section class="settings-tab-panel hidden" id="updates-settings">
                             <h3>Application updates</h3>
-                            <p>Installed version: <strong id="current-app-version">v1.2.0</strong></p>
+                            <p>Installed version: <strong id="current-app-version">v1.3.0</strong></p>
                             <p id="update-status" role="status">Checking for updates…</p>
                             <div class="update-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
                                 <a id="btn-apply-update" class="btn btn-accent hidden" href="#" target="_blank" rel="noopener noreferrer">Open release page</a>
@@ -370,6 +382,12 @@
                                             <span><strong>Safe Mode</strong>: Require confirmation before executing destructive queries (DROP, DELETE, TRUNCATE, ALTER)</span>
                                         </label>
                                     </div>
+                                    <div class="form-group full-width">
+                                        <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                            <input type="checkbox" id="conn-strict-read-only">
+                                            <span><strong>Strict Read-Only</strong>: Block all INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE queries at the server level</span>
+                                        </label>
+                                    </div>
                                 </div>
                                 <div class="form-actions">
                                     <button type="button" class="btn btn-secondary" id="btn-cancel-connection">Cancel</button>
@@ -500,6 +518,70 @@
                             <div class="form-actions"><button type="button" class="btn btn-secondary" id="btn-cancel-group">Cancel</button><button type="submit" class="btn btn-accent">Save Group</button></div>
                         </form>
                         <div id="groups-list-container" class="admin-list"></div>
+                    </section>
+                </main>
+
+                <!-- VIEW: SAVED QUERIES -->
+                <main class="app-view hidden" id="saved-queries-section">
+                    <section class="grid-card snippets-card">
+                        <div class="card-header">
+                            <div class="header-title"><h2>Saved Queries</h2></div>
+                            <button class="btn btn-primary btn-sm" id="btn-new-saved-query">Save Current Query</button>
+                        </div>
+                        <form id="saved-query-form" class="admin-form hidden">
+                            <input type="hidden" id="saved-query-id">
+                            <div class="form-group">
+                                <label for="saved-query-name">Name</label>
+                                <input id="saved-query-name" maxlength="200" required placeholder="My useful query">
+                            </div>
+                            <div class="form-group">
+                                <label for="saved-query-description">Description</label>
+                                <textarea id="saved-query-description" rows="2" placeholder="What this query does..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="saved-query-sql">SQL</label>
+                                <textarea id="saved-query-sql" class="code-editor-small" rows="4" required></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="saved-query-tags">Tags (comma-separated)</label>
+                                <input id="saved-query-tags" placeholder="reporting, daily, users">
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-secondary" id="btn-cancel-saved-query">Cancel</button>
+                                <button type="submit" class="btn btn-accent">Save Query</button>
+                            </div>
+                        </form>
+                        <div class="saved-queries-filter-row" style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                            <input type="search" id="saved-queries-search" class="connection-search-input" placeholder="Search saved queries..." autocomplete="off" style="flex: 1;">
+                        </div>
+                        <div id="saved-queries-list" class="admin-list"></div>
+                    </section>
+                </main>
+
+                <!-- VIEW: SCHEMA DIFF -->
+                <main class="app-view hidden" id="schema-diff-section">
+                    <section class="grid-card">
+                        <div class="card-header">
+                            <div class="header-title"><h2>Schema Diff</h2></div>
+                        </div>
+                        <div class="schema-diff-controls" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                            <div class="form-group" style="flex: 1; min-width: 200px;">
+                                <label for="diff-conn-source">Source Connection</label>
+                                <select id="diff-conn-source" class="connection-group-filter" style="width:100%"><option value="">Select source...</option></select>
+                            </div>
+                            <div class="form-group" style="flex: 1; min-width: 200px;">
+                                <label for="diff-conn-target">Target Connection</label>
+                                <select id="diff-conn-target" class="connection-group-filter" style="width:100%"><option value="">Select target...</option></select>
+                            </div>
+                            <div class="form-group" style="display: flex; align-items: flex-end;">
+                                <button type="button" class="btn btn-accent" id="btn-run-schema-diff">Compare Schemas</button>
+                            </div>
+                        </div>
+                        <div id="schema-diff-results" class="admin-list">
+                            <div class="table-placeholder" style="padding: 2rem; text-align: center;">
+                                <p>Select two connections and click "Compare Schemas" to see the differences.</p>
+                            </div>
+                        </div>
                     </section>
                 </main>
 

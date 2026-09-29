@@ -275,10 +275,18 @@ function renderTabPanelContent(tab) {
                         <button type="button" class="btn btn-primary btn-sm" id="btn-apply-result-edits-${tab.id}" data-tab-id="${tab.id}">Apply</button>
                         <button type="button" class="btn btn-secondary btn-sm" id="btn-revert-result-edits-${tab.id}" data-tab-id="${tab.id}">Revert</button>
                     </div>
-                    <button class="btn btn-secondary btn-sm" id="btn-export-csv-${tab.id}" disabled>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Export CSV
-                    </button>
+                    <div class="export-dropdown-wrapper">
+                        <button class="btn btn-secondary btn-sm" id="btn-export-csv-${tab.id}" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export ▾
+                        </button>
+                        <div class="export-dropdown hidden" id="export-dropdown-${tab.id}">
+                            <button type="button" class="export-option" data-format="csv" data-tab-id="${tab.id}">Export CSV</button>
+                            <button type="button" class="export-option" data-format="json" data-tab-id="${tab.id}">Export JSON</button>
+                            <button type="button" class="export-option" data-format="markdown" data-tab-id="${tab.id}">Export Markdown</button>
+                            <button type="button" class="export-option" data-format="sql" data-tab-id="${tab.id}">Export SQL INSERT</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -477,8 +485,26 @@ function bindTabPanelEvents(tab) {
         // Revert edits
         tab.btnRevertEdits?.addEventListener("click", () => revertResultEdits(tab.id));
 
-        // Export CSV
-        tab.btnExportCsv?.addEventListener("click", () => exportCsv(tab.id));
+        // Export dropdown toggle and options
+        tab.btnExportCsv?.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const dropdown = document.getElementById(`export-dropdown-${tab.id}`);
+            if (dropdown) {
+                document.querySelectorAll(".export-dropdown").forEach(d => { if (d !== dropdown) d.classList.add("hidden"); });
+                dropdown.classList.toggle("hidden");
+            } else {
+                exportData("csv", tab.id);
+            }
+        });
+
+        document.querySelectorAll(`#export-dropdown-${tab.id} .export-option`).forEach(opt => {
+            opt.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const format = opt.dataset.format || "csv";
+                exportData(format, tab.id);
+                opt.closest(".export-dropdown")?.classList.add("hidden");
+            });
+        });
 
         // Suggestion clicks
         tab.suggestionsElement?.addEventListener("click", e => {
@@ -1221,6 +1247,9 @@ async function initialize() {
         cacheDOMElements();
         setupSidebarVisibility();
         setupEventListeners();
+        initSavedQueriesEvents();
+        initSchemaDiffEvents();
+        initGlobalExportEvents();
     } catch (err) {
         console.error("DOM setup error:", err);
     }
@@ -1640,6 +1669,8 @@ function switchView(viewId) {
     if (viewId === "snippets-section" && window.SnippetsManager) {
         window.SnippetsManager.loadSnippets().then(() => window.SnippetsManager.renderSnippetsPanel());
     }
+    if (viewId === "saved-queries-section") loadSavedQueries();
+    if (viewId === "schema-diff-section") populateDiffConnectionSelects();
     if (viewId === "users-section" && currentUser?.role === "admin") fetchUsers();
     if (viewId === "groups-section" && currentUser?.role === "admin") renderGroupsAdmin();
     if (viewId === "settings-section") checkForUpdates();
@@ -1784,8 +1815,10 @@ async function renderQueryConnectionPanel() {
         item.className = `connection-panel-item${isSelected ? " selected" : ""}`;
         item.dataset.connectionId = connection.id;
         const isSafe = Boolean(connection.extra_params && connection.extra_params.safe_mode);
+        const isStrictRo = Boolean(connection.extra_params && connection.extra_params.strict_read_only);
         const safeBadge = isSafe ? '<span class="conn-safe-badge" title="Safe Mode enabled">🛡️</span>' : '';
-        item.innerHTML = `<span class="connection-panel-info"><span class="connection-panel-name">${escapeHtml(connection.name)}</span>${safeBadge}</span><span class="connection-panel-check">${isSelected ? "✓" : ""}</span>`;
+        const roBadge = isStrictRo ? '<span class="conn-safe-badge" title="Strict Read-Only enabled">🔒</span>' : '';
+        item.innerHTML = `<span class="connection-panel-info"><span class="connection-panel-name">${escapeHtml(connection.name)}</span>${safeBadge}${roBadge}</span><span class="connection-panel-check">${isSelected ? "✓" : ""}</span>`;
         item.addEventListener("click", () => {
             if (selectedConnectionIds.has(connection.id)) {
                 selectedConnectionIds.delete(connection.id);
@@ -1864,6 +1897,8 @@ function showConnectionForm(connection = null) {
         document.getElementById("conn-extra-params").value = JSON.stringify(connection.extra_params || {}, null, 2);
         const safeModeEl = document.getElementById("conn-safe-mode");
         if (safeModeEl) safeModeEl.checked = Boolean(connection.extra_params?.safe_mode);
+        const strictRoEl = document.getElementById("conn-strict-read-only");
+        if (strictRoEl) strictRoEl.checked = Boolean(connection.extra_params?.strict_read_only);
         Array.from(connGroupSelect.options).forEach(option => { option.selected = connection.group_ids.includes(Number(option.value)); });
     } else {
         const defaultType = databases.find(database => database.available)?.type || databases[0]?.type || "";
@@ -1871,6 +1906,8 @@ function showConnectionForm(connection = null) {
         applyDatabaseDefaults(defaultType);
         const safeModeEl = document.getElementById("conn-safe-mode");
         if (safeModeEl) safeModeEl.checked = false;
+        const strictRoEl = document.getElementById("conn-strict-read-only");
+        if (strictRoEl) strictRoEl.checked = false;
     }
     connPwdInput.value = ""; connPwdInput.type = "password";
 }
@@ -1886,6 +1923,12 @@ function connectionPayload() {
         extra.safe_mode = true;
     } else if (extra.safe_mode) {
         delete extra.safe_mode;
+    }
+    const strictRoEl = document.getElementById("conn-strict-read-only");
+    if (strictRoEl && strictRoEl.checked) {
+        extra.strict_read_only = true;
+    } else if (extra.strict_read_only) {
+        delete extra.strict_read_only;
     }
     const selected = Array.from(connGroupSelect.selectedOptions).map(option => option.value);
     return { name: document.getElementById("conn-name").value, db_type: connDbTypeSelect.value, host: document.getElementById("conn-host").value || null, port: document.getElementById("conn-port").value ? Number(document.getElementById("conn-port").value) : null, database: document.getElementById("conn-database").value || null, username: document.getElementById("conn-username").value || null, ...(connPwdInput.value ? { password: connPwdInput.value } : {}), extra_params: extra, group_ids: selected.map(Number) };
@@ -2128,6 +2171,13 @@ function renderSingleResult(tab, connId, result) {
         if (window.InlineEditingManager) {
             window.InlineEditingManager.initializeInlineEditing(tab);
         }
+        tab.singleResultContainer.querySelectorAll("thead th[data-column]").forEach((th, colIdx) => {
+            th.addEventListener("click", () => {
+                const colName = th.dataset.column;
+                applySortToResults(tab.id, colIdx, colName);
+            });
+        });
+        renderSummaryFooter(tab.id);
     }
 }
 
@@ -2279,7 +2329,7 @@ function buildEditableGrid(data, tabId, connId) {
     // Build table HTML
     let html = `<table class="excel-grid"><thead><tr>`;
     html += `<th class="col-index" title="Row Index">#</th>`;
-    columns.forEach(col => {
+    columns.forEach((col, colIdx) => {
         const type = columnTypes[col] || "text";
         let alignClass = "col-text";
         if (type === "integer" || type === "float") alignClass = "col-number";
@@ -2970,6 +3020,7 @@ async function renderSchemaExplorer(connectionId) {
             <span class="schema-table-name" title="Click to insert table name">${escapeHtml(tableName)}</span>
             <div class="schema-table-quick-actions">
                 <button type="button" class="btn btn-ghost btn-xs schema-action-select" title="Query first 100 rows">SELECT</button>
+                <button type="button" class="btn btn-ghost btn-xs schema-action-ddl" title="Generate CREATE TABLE DDL">DDL</button>
             </div>
         `;
 
@@ -3023,6 +3074,11 @@ async function renderSchemaExplorer(connectionId) {
         row.querySelector(".schema-action-select")?.addEventListener("click", e => {
             e.stopPropagation();
             loadAndRunQueryInActiveTab(`SELECT * FROM ${tableName} LIMIT 100;`);
+        });
+
+        row.querySelector(".schema-action-ddl")?.addEventListener("click", e => {
+            e.stopPropagation();
+            generateTableDDL(connectionId, tableName);
         });
 
         li.appendChild(row);
@@ -3127,8 +3183,512 @@ function cacheDOMElements() {
 
 function showToast(message, type = "info") { if (!toastContainer) return; toastContainer.innerHTML = `<div class="toast toast-${type}"><div class="toast-content"><span class="toast-message">${escapeHtml(message)}</span></div></div>`; setTimeout(() => { toastContainer.innerHTML = ""; }, 3500); }
 
+
+// ── v1.3.0 Feature Functions ──────────────────────────────────
+
+// ── Multi-Format Export ──
+function exportData(format, tabId) {
+    const tab = getTabById(tabId);
+    if (!tab || !tab.currentExportData) {
+        showToast("No data to export", "warning");
+        return;
+    }
+    const { columns, rows } = tab.currentExportData;
+    if (!columns || !rows || rows.length === 0) {
+        showToast("No rows to export", "warning");
+        return;
+    }
+
+    let content, filename, mimeType;
+    const timestamp = Date.now();
+
+    switch (format) {
+        case "csv":
+            content = [columns.join(","), ...rows.map(row => columns.map((col, idx) => {
+                const val = Array.isArray(row) ? row[idx] : row[col];
+                if (val === null || val === undefined) return "";
+                const str = String(val);
+                return str.includes(",") || str.includes('"') || str.includes("\n") ? `"${str.replace(/"/g, '""')}"` : str;
+            }).join(","))].join("\n");
+            filename = `query-results-${timestamp}.csv`;
+            mimeType = "text/csv;charset=utf-8;";
+            break;
+
+        case "json":
+            const jsonObj = rows.map(row => {
+                const item = {};
+                columns.forEach((col, idx) => {
+                    item[col] = Array.isArray(row) ? row[idx] : row[col];
+                });
+                return item;
+            });
+            content = JSON.stringify(jsonObj, null, 2);
+            filename = `query-results-${timestamp}.json`;
+            mimeType = "application/json;charset=utf-8;";
+            break;
+
+        case "markdown":
+            const header = "| " + columns.join(" | ") + " |";
+            const separator = "| " + columns.map(() => "---").join(" | ") + " |";
+            const body = rows.map(row => "| " + columns.map((col, idx) => {
+                const val = Array.isArray(row) ? row[idx] : row[col];
+                if (val === null || val === undefined) return "NULL";
+                return String(val).replace(/\|/g, "\\|").replace(/\n/g, " ");
+            }).join(" | ") + " |").join("\n");
+            content = header + "\n" + separator + "\n" + body;
+            filename = `query-results-${timestamp}.md`;
+            mimeType = "text/markdown;charset=utf-8;";
+            break;
+
+        case "sql":
+            const tblName = "exported_data";
+            content = rows.map(row => {
+                const vals = columns.map((col, idx) => {
+                    const val = Array.isArray(row) ? row[idx] : row[col];
+                    if (val === null || val === undefined) return "NULL";
+                    if (typeof val === "number") return String(val);
+                    if (typeof val === "boolean") return val ? "TRUE" : "FALSE";
+                    return `'${String(val).replace(/'/g, "''")}'`;
+                });
+                return `INSERT INTO ${tblName} (${columns.map(c => `"${c.replace(/"/g, '""')}"`).join(", ")}) VALUES (${vals.join(", ")});`;
+            }).join("\n");
+            filename = `query-results-${timestamp}.sql`;
+            mimeType = "text/sql;charset=utf-8;";
+            break;
+
+        default:
+            showToast(`Unknown export format: ${format}`, "error");
+            return;
+    }
+
+    const blob = new Blob([content], { type: mimeType });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    showToast(`Exported as ${format.toUpperCase()}`, "success");
+}
+
+function initGlobalExportEvents() {
+    document.addEventListener("click", () => {
+        document.querySelectorAll(".export-dropdown").forEach(d => d.classList.add("hidden"));
+    });
+}
+
+// ── Column Sorting ──
+let columnSortState = { tabId: null, column: null, direction: "asc" };
+
+function applySortToResults(tabId, colIndex, colName) {
+    const tab = getTabById(tabId);
+    if (!tab || !tab.currentExportData) return;
+
+    if (columnSortState.tabId === tabId && columnSortState.column === colIndex) {
+        columnSortState.direction = columnSortState.direction === "asc" ? "desc" : "asc";
+    } else {
+        columnSortState = { tabId, column: colIndex, direction: "asc" };
+    }
+
+    const dir = columnSortState.direction === "asc" ? 1 : -1;
+    const { columns, rows } = tab.currentExportData;
+
+    const sortedRows = [...rows].sort((a, b) => {
+        const va = Array.isArray(a) ? a[colIndex] : a[colName];
+        const vb = Array.isArray(b) ? b[colIndex] : b[colName];
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+        const na = Number(va);
+        const nb = Number(vb);
+        if (!isNaN(na) && !isNaN(nb) && typeof va !== "boolean" && typeof vb !== "boolean" && String(va).trim() !== "" && String(vb).trim() !== "") {
+            return (na - nb) * dir;
+        }
+        return String(va).localeCompare(String(vb)) * dir;
+    });
+
+    tab.currentExportData.rows = sortedRows;
+
+    // Update table body rows in the DOM
+    const container = document.getElementById(`single-result-container-${tabId}`);
+    if (!container) return;
+    const tbody = container.querySelector("tbody");
+    if (!tbody) return;
+
+    // Re-render tbody
+    const trs = tbody.querySelectorAll("tr");
+    if (trs.length === sortedRows.length) {
+        // Re-order existing rows or re-generate rows
+        const { html } = buildEditableGrid({ data: { columns, data: sortedRows } }, tabId, Array.from(tab.connectionIds || [])[0]);
+        const temp = document.createElement("div");
+        temp.innerHTML = html;
+        const newTbody = temp.querySelector("tbody");
+        if (newTbody) tbody.innerHTML = newTbody.innerHTML;
+    }
+
+    // Rebind editable cell blur listeners
+    tbody.querySelectorAll("td[contenteditable='true']").forEach(cell => {
+        cell.addEventListener("blur", e => handleCellEdit(tab, e));
+    });
+
+    // Update header classes
+    container.querySelectorAll("thead th[data-column]").forEach((th, idx) => {
+        th.classList.remove("sort-asc", "sort-desc");
+        if (idx === colIndex) {
+            th.classList.add(columnSortState.direction === "asc" ? "sort-asc" : "sort-desc");
+        }
+    });
+
+    renderSummaryFooter(tabId);
+}
+
+// ── Summary Footer Bar ──
+function renderSummaryFooter(tabId) {
+    const tab = getTabById(tabId);
+    if (!tab || !tab.currentExportData) return;
+    const { columns, rows } = tab.currentExportData;
+    const container = document.getElementById(`single-result-container-${tabId}`);
+    if (!container || !columns || !rows || rows.length === 0) return;
+
+    container.querySelector(".results-summary-footer")?.remove();
+
+    const numericStats = [];
+    columns.forEach((col, idx) => {
+        const nums = [];
+        rows.forEach(r => {
+            const val = Array.isArray(r) ? r[idx] : r[col];
+            if (val !== null && val !== undefined && val !== "") {
+                const n = Number(val);
+                if (!isNaN(n) && typeof val !== "boolean") {
+                    nums.push(n);
+                }
+            }
+        });
+        if (nums.length > 0 && nums.length >= rows.length * 0.5) {
+            const sum = nums.reduce((acc, v) => acc + v, 0);
+            const avg = sum / nums.length;
+            const min = Math.min(...nums);
+            const max = Math.max(...nums);
+            numericStats.push({ col, sum, avg, min, max, count: nums.length });
+        }
+    });
+
+    if (numericStats.length === 0) return;
+
+    const footer = document.createElement("div");
+    footer.className = "results-summary-footer";
+    footer.innerHTML = `
+        <div class="summary-bar">
+            ${numericStats.slice(0, 6).map(s => `
+                <div class="summary-stat">
+                    <span class="summary-label">${escapeHtml(s.col)}</span>
+                    <div class="summary-values">
+                        <span title="Sum"><strong>Σ</strong> ${s.sum.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
+                        <span title="Average"><strong>μ</strong> ${s.avg.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
+                        <span title="Min"><strong>↓</strong> ${s.min.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
+                        <span title="Max"><strong>↑</strong> ${s.max.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
+                    </div>
+                </div>
+            `).join("")}
+        </div>
+    `;
+    container.appendChild(footer);
+}
+
+// ── DDL Generation ──
+async function generateTableDDL(connId, tableName) {
+    try {
+        const data = await apiFetch(`/api/connections/${connId}/tables/${encodeURIComponent(tableName)}/ddl`);
+        const ddl = data.ddl || `-- No DDL available for ${tableName}`;
+        const tab = getActiveTab();
+        if (tab) {
+            ensureTabElementReferences(tab);
+            if (tab.editorInstance) {
+                tab.editorInstance.setValue(ddl);
+            } else if (tab.editorElement) {
+                tab.editorElement.value = ddl;
+            }
+            tab.query = ddl;
+            tab.isDirty = true;
+            updateTabName(tab);
+            updateQueryCheckForTab(tab);
+            switchView("query-section");
+            showToast(`DDL for "${tableName}" loaded into editor`, "success");
+        } else {
+            showToast("No active editor tab. Open a query tab first.", "warning");
+        }
+    } catch (e) {
+        showToast("DDL generation failed: " + e.message, "error");
+    }
+}
+
+// ── Saved Queries Management ──
+let savedQueriesList = [];
+
+async function loadSavedQueries() {
+    try {
+        const data = await apiFetch("/api/saved-queries");
+        savedQueriesList = Array.isArray(data) ? data : [];
+        renderSavedQueriesList();
+    } catch (e) {
+        showToast("Failed to load saved queries: " + e.message, "error");
+    }
+}
+
+function renderSavedQueriesList() {
+    const container = document.getElementById("saved-queries-list");
+    if (!container) return;
+    const search = (document.getElementById("saved-queries-search")?.value || "").toLowerCase();
+    const filtered = savedQueriesList.filter(q =>
+        q.name.toLowerCase().includes(search) ||
+        (q.description || "").toLowerCase().includes(search) ||
+        (q.tags || []).some(t => t.toLowerCase().includes(search))
+    );
+
+    if (filtered.length === 0) {
+        container.innerHTML = '<div class="table-placeholder" style="padding:2rem;text-align:center;"><p>No saved queries found.</p></div>';
+        return;
+    }
+
+    container.innerHTML = filtered.map(q => `
+        <div class="snippet-item" data-id="${q.id}">
+            <div class="snippet-info">
+                <strong>${escapeHtml(q.name)}</strong>
+                ${q.description ? `<span class="snippet-description">${escapeHtml(q.description)}</span>` : ""}
+                ${(q.tags && q.tags.length) ? `<span class="snippet-tags" style="font-size:0.75rem;color:var(--text-muted);">${q.tags.map(t => '#' + escapeHtml(t)).join(' ')}</span>` : ""}
+            </div>
+            <div class="snippet-actions">
+                <button type="button" class="btn btn-ghost btn-sm" onclick="loadSavedQueryIntoEditor(${q.id})" title="Load into editor">Load</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="editSavedQuery(${q.id})" title="Edit">Edit</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="deleteSavedQuery(${q.id})" title="Delete" style="color:var(--error);">Delete</button>
+            </div>
+        </div>
+    `).join("");
+}
+
+function editSavedQuery(id) {
+    const q = savedQueriesList.find(x => x.id === id);
+    if (!q) return;
+    const form = document.getElementById("saved-query-form");
+    if (!form) return;
+    document.getElementById("saved-query-id").value = q.id;
+    document.getElementById("saved-query-name").value = q.name;
+    document.getElementById("saved-query-description").value = q.description || "";
+    document.getElementById("saved-query-sql").value = q.sql;
+    document.getElementById("saved-query-tags").value = (q.tags || []).join(", ");
+    form.classList.remove("hidden");
+    form.scrollIntoView({ behavior: "smooth" });
+}
+
+async function deleteSavedQuery(id) {
+    if (!confirm("Are you sure you want to delete this saved query?")) return;
+    try {
+        await apiFetch(`/api/saved-queries/${id}`, { method: "DELETE" });
+        showToast("Saved query deleted", "success");
+        loadSavedQueries();
+    } catch (e) {
+        showToast("Delete failed: " + e.message, "error");
+    }
+}
+
+function loadSavedQueryIntoEditor(id) {
+    const q = savedQueriesList.find(x => x.id === id);
+    if (!q) return;
+    const tab = getActiveTab();
+    if (tab) {
+        ensureTabElementReferences(tab);
+        if (tab.editorInstance) {
+            tab.editorInstance.setValue(q.sql);
+        } else if (tab.editorElement) {
+            tab.editorElement.value = q.sql;
+        }
+        tab.query = q.sql;
+        tab.isDirty = true;
+        updateTabName(tab);
+        updateQueryCheckForTab(tab);
+        switchView("query-section");
+        showToast(`Loaded "${q.name}" into editor`, "success");
+    } else {
+        showToast("No active editor tab. Open a query tab first.", "warning");
+    }
+}
+
+function initSavedQueriesEvents() {
+    const form = document.getElementById("saved-query-form");
+    const btnNew = document.getElementById("btn-new-saved-query");
+    const btnCancel = document.getElementById("btn-cancel-saved-query");
+    const searchInput = document.getElementById("saved-queries-search");
+
+    if (btnNew) {
+        btnNew.addEventListener("click", () => {
+            const tab = getActiveTab();
+            const currentSql = tab ? (tab.editorInstance ? tab.editorInstance.getValue() : tab.editorElement?.value || "") : "";
+            document.getElementById("saved-query-id").value = "";
+            document.getElementById("saved-query-name").value = "";
+            document.getElementById("saved-query-description").value = "";
+            document.getElementById("saved-query-sql").value = currentSql;
+            document.getElementById("saved-query-tags").value = "";
+            form?.classList.remove("hidden");
+            form?.scrollIntoView({ behavior: "smooth" });
+        });
+    }
+
+    if (btnCancel) {
+        btnCancel.addEventListener("click", () => form?.classList.add("hidden"));
+    }
+
+    if (searchInput) {
+        searchInput.addEventListener("input", renderSavedQueriesList);
+    }
+
+    if (form) {
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const id = document.getElementById("saved-query-id").value;
+            const payload = {
+                name: document.getElementById("saved-query-name").value.trim(),
+                sql: document.getElementById("saved-query-sql").value.trim(),
+                description: document.getElementById("saved-query-description").value.trim(),
+                tags: document.getElementById("saved-query-tags").value.split(",").map(t => t.trim()).filter(Boolean)
+            };
+            try {
+                if (id) {
+                    await apiFetch(`/api/saved-queries/${id}`, {
+                        method: "PUT",
+                        body: JSON.stringify(payload)
+                    });
+                    showToast("Saved query updated", "success");
+                } else {
+                    await apiFetch("/api/saved-queries", {
+                        method: "POST",
+                        body: JSON.stringify(payload)
+                    });
+                    showToast("Query saved successfully", "success");
+                }
+                form.classList.add("hidden");
+                loadSavedQueries();
+            } catch (err) {
+                showToast("Save failed: " + err.message, "error");
+            }
+        });
+    }
+}
+
+// ── Schema Diff ──
+function populateDiffConnectionSelects() {
+    const src = document.getElementById("diff-conn-source");
+    const tgt = document.getElementById("diff-conn-target");
+    if (!src || !tgt) return;
+    const conns = connections || [];
+    const opts = conns.map(c => `<option value="${c.id}">${escapeHtml(c.name || c.database)} (${escapeHtml(c.db_type || "")})</option>`).join("");
+    src.innerHTML = '<option value="">Select source connection...</option>' + opts;
+    tgt.innerHTML = '<option value="">Select target connection...</option>' + opts;
+}
+
+async function runSchemaDiff() {
+    const srcId = document.getElementById("diff-conn-source")?.value;
+    const tgtId = document.getElementById("diff-conn-target")?.value;
+    const resultsDiv = document.getElementById("schema-diff-results");
+    if (!srcId || !tgtId) {
+        showToast("Please select both source and target connections", "warning");
+        return;
+    }
+    if (srcId === tgtId) {
+        showToast("Source and target must be different connections", "warning");
+        return;
+    }
+
+    if (resultsDiv) {
+        resultsDiv.innerHTML = '<div style="padding:2rem;text-align:center;"><div class="spinner"></div><p style="margin-top:1rem;">Comparing schemas...</p></div>';
+    }
+
+    try {
+        const data = await apiFetch("/api/schema/diff", {
+            method: "POST",
+            body: JSON.stringify({
+                source_connection_id: parseInt(srcId, 10),
+                target_connection_id: parseInt(tgtId, 10)
+            })
+        });
+        renderSchemaDiffResults(data);
+    } catch (e) {
+        if (resultsDiv) {
+            resultsDiv.innerHTML = `<div style="padding:2rem;text-align:center;color:var(--error);"><p>Diff comparison failed: ${escapeHtml(e.message)}</p></div>`;
+        }
+    }
+}
+
+function renderSchemaDiffResults(data) {
+    const container = document.getElementById("schema-diff-results");
+    if (!container) return;
+    const diffs = data.differences || [];
+    if (diffs.length === 0) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--success);"><p>✅ Schemas are identical — no differences found between the two databases.</p></div>';
+        return;
+    }
+
+    let html = `
+        <div class="schema-diff-summary" style="margin-bottom:1rem;padding:0.75rem 1rem;background:var(--surface);border-radius:8px;border:1px solid var(--border);">
+            <strong>${diffs.length} difference${diffs.length !== 1 ? "s" : ""} found</strong>
+            <span style="color:var(--text-muted);margin-left:0.5rem;">Source: ${escapeHtml(data.source || "")} vs Target: ${escapeHtml(data.target || "")}</span>
+        </div>
+        <div class="schema-diff-list">
+    `;
+
+    diffs.forEach(d => {
+        let icon = "🟡";
+        let borderColor = "var(--warning, orange)";
+        let desc = "";
+
+        if (d.type === "missing_table") {
+            icon = "🔴";
+            borderColor = "var(--error)";
+            desc = `Table <code>${escapeHtml(d.table)}</code> exists in source but is missing in target`;
+        } else if (d.type === "missing_column") {
+            icon = "🟡";
+            borderColor = "var(--warning, orange)";
+            desc = `Column <code>${escapeHtml(d.table)}.${escapeHtml(d.column)}</code> exists in source but is missing in target`;
+        } else if (d.type === "type_mismatch") {
+            icon = "🟠";
+            borderColor = "var(--accent)";
+            desc = `Column <code>${escapeHtml(d.table)}.${escapeHtml(d.column)}</code> type mismatch: <code>${escapeHtml(d.source_type)}</code> in source → <code>${escapeHtml(d.target_type)}</code> in target`;
+        } else {
+            desc = escapeHtml(JSON.stringify(d));
+        }
+
+        html += `
+            <div class="snippet-item" style="border-left: 3px solid ${borderColor}; margin-bottom: 0.5rem; padding: 0.75rem 1rem; background: var(--surface); border-radius: 6px;">
+                <div class="snippet-info">
+                    <span>${icon} ${desc}</span>
+                </div>
+            </div>
+        `;
+    });
+
+    html += "</div>";
+    container.innerHTML = html;
+}
+
+function initSchemaDiffEvents() {
+    document.getElementById("btn-run-schema-diff")?.addEventListener("click", runSchemaDiff);
+}
+
 // Global exports for modular scripts
 window.queryTabs = queryTabs;
+window.exportData = exportData;
+window.applySortToResults = applySortToResults;
+window.renderSummaryFooter = renderSummaryFooter;
+window.generateTableDDL = generateTableDDL;
+window.savedQueriesList = savedQueriesList;
+window.loadSavedQueries = loadSavedQueries;
+window.renderSavedQueriesList = renderSavedQueriesList;
+window.editSavedQuery = editSavedQuery;
+window.deleteSavedQuery = deleteSavedQuery;
+window.loadSavedQueryIntoEditor = loadSavedQueryIntoEditor;
+window.populateDiffConnectionSelects = populateDiffConnectionSelects;
+window.runSchemaDiff = runSchemaDiff;
+window.renderSchemaDiffResults = renderSchemaDiffResults;
+window.columnSortState = columnSortState;
 window.getTabById = getTabById;
 window.getActiveTab = getActiveTab;
 window.updateTabName = updateTabName;

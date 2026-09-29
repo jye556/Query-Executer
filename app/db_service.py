@@ -1019,6 +1019,134 @@ def get_schema_metadata(**params: Any) -> Dict[str, Any]:
             conn.close()
 
 
+def generate_table_ddl(table_name: str, **params: Any) -> Dict[str, Any]:
+    """Generate CREATE TABLE DDL for a specified table using its metadata."""
+    name = _db_name(params.get("db_type", "sqlite"))
+    if name == DatabaseType.SQLITE.value:
+        conn = None
+        cursor = None
+        try:
+            conn = _get_connection(name, params)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND LOWER(name) = LOWER(?)",
+                (table_name,)
+            )
+            row = cursor.fetchone()
+            if row and row[0]:
+                return {"success": True, "table": table_name, "ddl": f"{row[0]};"}
+        except Exception:
+            pass
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    metadata = get_schema_metadata(**params)
+    tables = metadata.get("tables", [])
+    table_info = next((t for t in tables if str(t["name"]).lower() == table_name.lower()), None)
+    if not table_info:
+        return {"success": False, "error": f"Table '{table_name}' not found", "ddl": ""}
+
+    lines = []
+    pks = []
+    for col in table_info.get("columns", []):
+        c_name = col["name"]
+        c_type = col.get("type", "TEXT") or "TEXT"
+        col_str = f'    "{c_name}" {c_type}'
+        if col.get("not_null"):
+            col_str += " NOT NULL"
+        if col.get("default") is not None:
+            col_str += f" DEFAULT {col['default']}"
+        if col.get("is_primary_key"):
+            pks.append(f'"{c_name}"')
+        lines.append(col_str)
+
+    if pks:
+        lines.append(f"    PRIMARY KEY ({', '.join(pks)})")
+
+    for fk in table_info.get("foreign_keys", []):
+        col = fk.get("column")
+        ref_t = fk.get("ref_table")
+        ref_c = fk.get("ref_column")
+        if col and ref_t and ref_c:
+            lines.append(f'    FOREIGN KEY ("{col}") REFERENCES "{ref_t}" ("{ref_c}")')
+
+    body = ",\n".join(lines)
+    ddl = f'CREATE TABLE "{table_info["name"]}" (\n{body}\n);'
+    return {"success": True, "table": table_info["name"], "ddl": ddl}
+
+
+def get_schema_diff(conn_a_params: Dict[str, Any], conn_b_params: Dict[str, Any]) -> Dict[str, Any]:
+    """Compare schemas between two database connections and produce a detailed diff."""
+    meta_a = get_schema_metadata(**conn_a_params)
+    meta_b = get_schema_metadata(**conn_b_params)
+
+    tables_a = {str(t["name"]).lower(): t for t in meta_a.get("tables", [])}
+    tables_b = {str(t["name"]).lower(): t for t in meta_b.get("tables", [])}
+
+    all_table_keys = sorted(set(tables_a.keys()) | set(tables_b.keys()))
+
+    diff = {
+        "success": True,
+        "tables_only_in_a": [],
+        "tables_only_in_b": [],
+        "common_tables": [],
+        "has_differences": False,
+    }
+
+    for t_key in all_table_keys:
+        t_a = tables_a.get(t_key)
+        t_b = tables_b.get(t_key)
+
+        if t_a and not t_b:
+            diff["tables_only_in_a"].append(t_a["name"])
+            diff["has_differences"] = True
+        elif t_b and not t_a:
+            diff["tables_only_in_b"].append(t_b["name"])
+            diff["has_differences"] = True
+        else:
+            cols_a = {str(c["name"]).lower(): c for c in t_a.get("columns", [])}
+            cols_b = {str(c["name"]).lower(): c for c in t_b.get("columns", [])}
+            all_col_keys = sorted(set(cols_a.keys()) | set(cols_b.keys()))
+
+            table_diff = {
+                "name": t_a["name"],
+                "columns_only_in_a": [],
+                "columns_only_in_b": [],
+                "type_mismatches": [],
+                "has_differences": False,
+            }
+
+            for c_key in all_col_keys:
+                c_a = cols_a.get(c_key)
+                c_b = cols_b.get(c_key)
+
+                if c_a and not c_b:
+                    table_diff["columns_only_in_a"].append({"name": c_a["name"], "type": c_a.get("type", "")})
+                    table_diff["has_differences"] = True
+                elif c_b and not c_a:
+                    table_diff["columns_only_in_b"].append({"name": c_b["name"], "type": c_b.get("type", "")})
+                    table_diff["has_differences"] = True
+                else:
+                    type_a = str(c_a.get("type", "")).upper().split("(")[0]
+                    type_b = str(c_b.get("type", "")).upper().split("(")[0]
+                    if type_a != type_b:
+                        table_diff["type_mismatches"].append({
+                            "column": c_a["name"],
+                            "type_a": c_a.get("type", ""),
+                            "type_b": c_b.get("type", ""),
+                        })
+                        table_diff["has_differences"] = True
+
+            if table_diff["has_differences"]:
+                diff["has_differences"] = True
+            diff["common_tables"].append(table_diff)
+
+    return diff
+
+
 def apply_query_edits(query: str, edits: List[Dict[str, Any]], **params: Any) -> Dict[str, Any]:
     """Apply cell updates for a conservative single-table SELECT."""
     context = _single_select_context(query)
@@ -1167,6 +1295,19 @@ def validate_query(query: str, role: str = "viewer", db_type: Any = None, connec
         return False, "A SQL statement is required", "", False
     first = match.group(1).upper()
 
+    # Strict read-only enforcement
+    is_strict_read_only = bool(
+        connection_params
+        and isinstance(connection_params.get("extra_params"), dict)
+        and connection_params["extra_params"].get("strict_read_only")
+    )
+    if is_strict_read_only:
+        allowed_commands = {"SELECT", "EXPLAIN", "SHOW", "DESCRIBE", "DESC", "PRAGMA", "WITH"}
+        if first not in allowed_commands:
+            return False, f"Connection is configured as Strict Read-Only. Only read queries (SELECT, EXPLAIN) are permitted (attempted {first}).", "", False
+        if first == "WITH" and re.search(r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE)\b", without_trailing, re.IGNORECASE):
+            return False, "Connection is configured as Strict Read-Only. Mutating statements in CTEs are not permitted.", "", False
+
     # Skip EXPLAIN validation for queries that appear to have parameter placeholders
     # as they would fail without bound parameters
     has_params = bool(parse_query_parameters(query))
@@ -1280,6 +1421,11 @@ def execute_query(
             # Applies to the current transaction only and prevents runaway
             # queries without changing the saved connection configuration.
             cursor.execute("SET LOCAL statement_timeout = %s", (30_000,))
+            if extra_params and extra_params.get("strict_read_only"):
+                try:
+                    cursor.execute("SET TRANSACTION READ ONLY;")
+                except Exception:
+                    pass
         elif name == DatabaseType.SQLITE.value:
             cursor.execute("PRAGMA busy_timeout = 30000")
         # Any supported statement may return a result set (for example SHOW,

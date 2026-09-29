@@ -272,6 +272,84 @@ def _create_tables(cur: Any, postgres: bool) -> None:
         ):
             _add_column(cur, postgres, "snippets", column, definition)
 
+    # Saved Queries table (named queries with folders, tags, description)
+    if not _table_exists(cur, postgres, "saved_queries"):
+        cur.execute(
+            f'''CREATE TABLE saved_queries (
+                id VARCHAR(50) PRIMARY KEY,
+                name VARCHAR(200) NOT NULL,
+                category VARCHAR(100),
+                description VARCHAR(500),
+                sql TEXT NOT NULL,
+                connection_id VARCHAR(50),
+                tags VARCHAR(250),
+                user_id BIGINT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )'''
+        )
+    else:
+        for column, definition in (
+            ("id", "VARCHAR(50)"),
+            ("name", "VARCHAR(200)"),
+            ("category", "VARCHAR(100)"),
+            ("description", "VARCHAR(500)"),
+            ("sql", "TEXT"),
+            ("connection_id", "VARCHAR(50)"),
+            ("tags", "VARCHAR(250)"),
+            ("user_id", "BIGINT"),
+            ("created_at", "TIMESTAMP"),
+            ("updated_at", "TIMESTAMP"),
+        ):
+            _add_column(cur, postgres, "saved_queries", column, definition)
+
+    # Workspace State table (cloud sync for user tabs and queries)
+    if not _table_exists(cur, postgres, "workspace_state"):
+        cur.execute(
+            '''CREATE TABLE workspace_state (
+                user_id BIGINT PRIMARY KEY,
+                state_json TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )'''
+        )
+
+    # Scheduled Queries table (recurring background queries and webhook alerts)
+    if not _table_exists(cur, postgres, "scheduled_queries"):
+        cur.execute(
+            f'''CREATE TABLE scheduled_queries (
+                id VARCHAR(50) PRIMARY KEY,
+                title VARCHAR(200) NOT NULL,
+                query TEXT NOT NULL,
+                connection_id VARCHAR(50) NOT NULL,
+                cron_interval VARCHAR(50) NOT NULL,
+                webhook_url VARCHAR(500),
+                alert_condition VARCHAR(100),
+                user_id BIGINT NOT NULL,
+                is_active {default_bool},
+                last_run_at TIMESTAMP,
+                last_status VARCHAR(50),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )'''
+        )
+    else:
+        for column, definition in (
+            ("id", "VARCHAR(50)"),
+            ("title", "VARCHAR(200)"),
+            ("query", "TEXT"),
+            ("connection_id", "VARCHAR(50)"),
+            ("cron_interval", "VARCHAR(50)"),
+            ("webhook_url", "VARCHAR(500)"),
+            ("alert_condition", "VARCHAR(100)"),
+            ("user_id", "BIGINT"),
+            ("is_active", default_bool),
+            ("last_run_at", "TIMESTAMP"),
+            ("last_status", "VARCHAR(50)"),
+            ("created_at", "TIMESTAMP"),
+            ("updated_at", "TIMESTAMP"),
+        ):
+            _add_column(cur, postgres, "scheduled_queries", column, definition)
+
 
 def _create_index(cur: Any, sql: str) -> None:
     # All index statements are static and already contain IF NOT EXISTS.  A
@@ -290,6 +368,8 @@ def _indexes(cur: Any, postgres: bool) -> None:
         'CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions (expires_at)',
         'CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (LOWER(username))',
         'CREATE UNIQUE INDEX IF NOT EXISTS groups_name_lower_idx ON "groups" (LOWER(name))',
+        'CREATE INDEX IF NOT EXISTS saved_queries_user_idx ON saved_queries (user_id)',
+        'CREATE INDEX IF NOT EXISTS scheduled_queries_user_idx ON scheduled_queries (user_id)',
     ]
     for statement in statements:
         _create_index(cur, statement)
