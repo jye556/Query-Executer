@@ -2027,24 +2027,43 @@ async def update_application(user: Dict[str, Any] = Depends(admin_user)):
         if local_sha == remote_sha:
             return {"success": True, "message": "Already up to date", "updated": False}
 
-        # Step 3: Pull latest changes
-        # First stash any local changes
+        # Step 3: Switch/reset to latest origin/main
+        # Stash any local uncommitted changes including untracked files
         subprocess.run(
-            ["git", "stash"],
+            ["git", "stash", "--include-untracked"],
             cwd=repo_root,
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=15,
         )
-        result = subprocess.run(
-            ["git", "pull", "origin", "main"],
+        # Ensure pull reconciliation config is present
+        subprocess.run(
+            ["git", "config", "pull.rebase", "false"],
             cwd=repo_root,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=5,
+        )
+        # Switch to and align branch 'main' directly with origin/main
+        result = subprocess.run(
+            ["git", "checkout", "-B", "main", "origin/main"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode != 0:
-            return {"success": False, "error": f"Git pull failed: {result.stderr}"}
+            # Fallback: checkout main and reset hard to origin/main
+            subprocess.run(["git", "checkout", "main"], cwd=repo_root, capture_output=True, text=True, timeout=15)
+            result = subprocess.run(
+                ["git", "reset", "--hard", "origin/main"],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                return {"success": False, "error": f"Git update failed: {result.stderr}"}
 
         # Step 4: Install/update dependencies
         python_bin = sys.executable
