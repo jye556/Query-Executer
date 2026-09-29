@@ -87,7 +87,7 @@ USE_POSTGRES = bool(DATABASE_URL)
 app = FastAPI(
     title="Query Execute",
     description="A secure, multi-database SQL query workspace.",
-    version="1.6.0",
+    version="1.7.0",
 )
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -853,6 +853,7 @@ class QueryRequest(BaseModel):
     limit: Optional[int] = Field(default=1000, ge=1, le=10000)
     parameters: Optional[Any] = Field(default=None, description="Query bind parameters (dict or list)")
     execution_id: Optional[str] = Field(default=None, max_length=100, description="Optional client execution tracking ID")
+    force_commit: bool = Field(default=False)
 
 
 class QueryCancelRequest(BaseModel):
@@ -1938,6 +1939,7 @@ async def execute_query_endpoint(payload: QueryRequest, user: Dict[str, Any] = D
             role=user["role"],
             parameters=payload.parameters,
             execution_id=payload.execution_id,
+            force_commit=payload.force_commit,
             **params,
         )
         elapsed = int((time.time() - start_time) * 1000)
@@ -2543,11 +2545,11 @@ async def create_scheduled_query(payload: ScheduledQueryInput, user: Dict[str, A
         sched_id = str(uuid.uuid4())
         cur = conn.cursor()
         cur.execute(
-            """INSERT INTO scheduled_queries (id, title, query, connection_id, cron_interval, webhook_url, alert_condition, is_active, user_id)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""" if USE_POSTGRES else
-            """INSERT INTO scheduled_queries (id, title, query, connection_id, cron_interval, webhook_url, alert_condition, is_active, user_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (sched_id, payload.title, payload.query, payload.connection_id, payload.cron_interval, payload.webhook_url, payload.alert_condition, payload.is_active, user["id"])
+            """INSERT INTO scheduled_queries (id, title, query, connection_id, cron_interval, webhook_url, target_connection_id, target_table, alert_condition, is_active, user_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""" if USE_POSTGRES else
+            """INSERT INTO scheduled_queries (id, title, query, connection_id, cron_interval, webhook_url, target_connection_id, target_table, alert_condition, is_active, user_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (sched_id, payload.title, payload.query, payload.connection_id, payload.cron_interval, payload.webhook_url, payload.target_connection_id, payload.target_table, payload.alert_condition, payload.is_active, user["id"])
         )
         conn.commit()
         cur.close()
@@ -2598,8 +2600,49 @@ async def run_scheduled_query_now(query_id: str, user: Dict[str, Any] = Depends(
     finally:
         conn.close()
 
-    result = execute_query(query=sched["query"], limit=100, **conn_params)
+    result = execute_query(query=sched["query"], limit=10000, **conn_params)
     status_str = "Success" if result.get("success") else f"Failed: {result.get('error', 'Unknown error')}"
+
+    # Cross-Database Data Sync (ETL)
+    if result.get("success") and sched.get("target_connection_id") and sched.get("target_table"):
+        target_conn_id = sched["target_connection_id"]
+        target_table = sched["target_table"]
+        
+        # Get target connection
+        conn2 = get_db_conn()
+        try:
+            target_row = _authorized_connection_row(conn2, target_conn_id, {"id": sched["user_id"], "role": "admin"})
+            if target_row:
+                target_params = _connection_params(target_row)
+                target_params["db_type"] = target_row.get("db_type")
+                
+                rows_to_insert = result.get("data", [])
+                if rows_to_insert:
+                    cols = list(rows_to_insert[0].keys())
+                    # Generate dynamic insert
+                    # This is a naive insert for demo/ETL purposes
+                    placeholders = ", ".join(["%s" if target_params["db_type"] == "postgresql" else "?"] * len(cols))
+                    col_names = ", ".join(cols)
+                    insert_query = f"INSERT INTO {target_table} ({col_names}) VALUES ({placeholders})"
+                    
+                    target_db_conn = _get_connection(target_params["db_type"], target_row)
+                    target_cur = target_db_conn.cursor()
+                    try:
+                        for r in rows_to_insert:
+                            vals = tuple(r.get(c) for c in cols)
+                            target_cur.execute(insert_query, vals)
+                        target_db_conn.commit()
+                        status_str += f" | Synced {len(rows_to_insert)} rows to {target_table}"
+                    except Exception as ins_err:
+                        target_db_conn.rollback()
+                        status_str += f" | Sync Failed: {str(ins_err)}"
+                    finally:
+                        target_cur.close()
+                        target_db_conn.close()
+        except Exception as e:
+            status_str += f" | Sync Error: {str(e)}"
+        finally:
+            conn2.close()
 
     webhook_sent = False
     webhook_error = None
@@ -3005,5 +3048,97 @@ async def sync_saved_queries_to_disk(user: Dict[str, Any] = Depends(current_user
             count += 1
             
         return {"success": True, "count": count, "directory": export_dir}
+    finally:
+        conn.close()
+
+
+@app.get("/api/audit-logs")
+async def get_audit_logs(limit: int = 200, user: Dict[str, Any] = Depends(current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+        
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        query = '''
+            SELECT qh.id, qh.query, qh.success, qh.row_count, qh.execution_time_ms, qh.error_message, qh.executed_at,
+                   c.name as connection_name, u.username
+            FROM query_history qh
+            LEFT JOIN connections c ON qh.connection_id = c.id
+            LEFT JOIN users u ON qh.user_id = u.id
+            ORDER BY qh.executed_at DESC LIMIT %s
+        ''' if USE_POSTGRES else '''
+            SELECT qh.id, qh.query, qh.success, qh.row_count, qh.execution_time_ms, qh.error_message, qh.executed_at,
+                   c.name as connection_name, u.username
+            FROM query_history qh
+            LEFT JOIN connections c ON qh.connection_id = c.id
+            LEFT JOIN users u ON qh.user_id = u.id
+            ORDER BY qh.executed_at DESC LIMIT ?
+        '''
+        cur.execute(query, (limit,))
+        logs = cur.fetchall()
+        cur.close()
+        return logs
+    finally:
+        conn.close()
+
+
+@app.post("/api/saved-queries/{query_id}/public-api")
+async def enable_public_api(query_id: int, user: Dict[str, Any] = Depends(current_user)):
+    import uuid
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        if USE_POSTGRES:
+            cur.execute("SELECT * FROM saved_queries WHERE id = %s AND user_id = %s", (query_id, user["id"]))
+        else:
+            cur.execute("SELECT * FROM saved_queries WHERE id = ? AND user_id = ?", (query_id, user["id"]))
+        sq = cur.fetchone()
+        if not sq:
+            raise HTTPException(status_code=404, detail="Query not found")
+            
+        api_key = sq.get("api_key")
+        if not api_key:
+            api_key = "qe_" + uuid.uuid4().hex
+            
+        if USE_POSTGRES:
+            cur.execute("UPDATE saved_queries SET is_public_api = TRUE, api_key = %s WHERE id = %s", (api_key, query_id))
+        else:
+            cur.execute("UPDATE saved_queries SET is_public_api = 1, api_key = ? WHERE id = ?", (api_key, query_id))
+        conn.commit()
+        cur.close()
+        return {"success": True, "api_key": api_key, "url": f"/api/public/v1/query/{query_id}"}
+    finally:
+        conn.close()
+
+@app.get("/api/public/v1/query/{query_id}")
+async def execute_public_query(query_id: int, request: Request):
+    api_key = request.headers.get("X-API-Key")
+    if not api_key:
+        api_key = request.query_params.get("api_key")
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Missing API Key")
+        
+    conn = get_db_conn()
+    try:
+        cur = _cursor(conn, dict_rows=True)
+        query_sql = "SELECT sq.*, c.name as conn_name, c.host, c.port, c.database, c.username, c.password, c.db_type, c.extra_params FROM saved_queries sq JOIN connections c ON sq.connection_id = c.id WHERE sq.id = %s AND sq.is_public_api = TRUE AND sq.api_key = %s" if USE_POSTGRES else "SELECT sq.*, c.name as conn_name, c.host, c.port, c.database, c.username, c.password, c.db_type, c.extra_params FROM saved_queries sq JOIN connections c ON sq.connection_id = c.id WHERE sq.id = ? AND sq.is_public_api = 1 AND sq.api_key = ?"
+        cur.execute(query_sql, (query_id, api_key))
+        row = cur.fetchone()
+        cur.close()
+        
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid API Key or Query is not public")
+            
+        params = _connection_params(row)
+        params["db_type"] = row.get("db_type")
+        
+        # Execute query
+        result = execute_query(query=row["sql"], limit=10000, **params)
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error"))
+            
+        return {"data": result.get("data")}
     finally:
         conn.close()

@@ -80,6 +80,29 @@ def _create_tables(cur: Any, postgres: bool) -> None:
     default_bool = "BOOLEAN NOT NULL DEFAULT FALSE" if postgres else "INTEGER NOT NULL DEFAULT 0"
     true_default = "TRUE" if postgres else "1"
 
+    _ensure_table(
+        cur,
+        postgres,
+        "audit_logs",
+        f'''CREATE TABLE audit_logs (
+            id {id_type},
+            user_id BIGINT,
+            connection_id VARCHAR(50),
+            query_text TEXT NOT NULL,
+            execution_time_ms FLOAT,
+            row_count INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''',
+        (
+            ("user_id", "BIGINT"),
+            ("connection_id", "VARCHAR(50)"),
+            ("query_text", "TEXT"),
+            ("execution_time_ms", "FLOAT"),
+            ("row_count", "INTEGER"),
+            ("created_at", "TIMESTAMP"),
+        ),
+    )
+
     # The migration ledger is created first.  Every later operation is
     # introspected, so a partially completed process can safely resume.
     cur.execute(
